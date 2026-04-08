@@ -1,0 +1,372 @@
+import { describeBitFlip, maxBitPosition } from './avalanche';
+import { avalancheAnalysis, hashAll, paddingInfo, type AvalanchePerAlgorithm, type HashResults } from './hasher';
+
+const defaultMessage = 'The quick brown fox jumps over the lazy dog';
+
+function renderByteSpans(hex: string): string {
+  const chunks = hex.match(/.{1,2}/g) ?? [];
+  return chunks
+    .map((chunk, index) => `<span class="byte byte-${index % 8}">${chunk}</span>`)
+    .join('');
+}
+
+function formatMicros(ms: number): string {
+  return `${(ms * 1000).toFixed(2)} us`;
+}
+
+function makeHashRows(results: HashResults): string {
+  return `
+    <tr>
+      <th>Output (hex)</th>
+      <td>
+        <div class="hex-wrap">${renderByteSpans(results.sha256.hex)}</div>
+        <button class="copy-btn" data-copy="${results.sha256.hex}">Copy</button>
+      </td>
+      <td>
+        <div class="hex-wrap">${renderByteSpans(results.sha3.hex)}</div>
+        <button class="copy-btn" data-copy="${results.sha3.hex}">Copy</button>
+      </td>
+      <td>
+        <div class="hex-wrap">${renderByteSpans(results.blake3.hex)}</div>
+        <button class="copy-btn" data-copy="${results.blake3.hex}">Copy</button>
+      </td>
+    </tr>
+    <tr>
+      <th>Time (avg us)</th>
+      <td>${formatMicros(results.sha256.timeMs)}</td>
+      <td>${formatMicros(results.sha3.timeMs)}</td>
+      <td>${formatMicros(results.blake3.timeMs)}</td>
+    </tr>
+    <tr>
+      <th>Output size</th>
+      <td>256 bits</td>
+      <td>256 bits</td>
+      <td>256 bits</td>
+    </tr>
+    <tr>
+      <th>Internal state size</th>
+      <td>256-bit chaining value</td>
+      <td>1600-bit state (1088|512)</td>
+      <td>256-bit chaining value per node</td>
+    </tr>
+    <tr>
+      <th>Construction</th>
+      <td>Merkle-Damgaard</td>
+      <td>Sponge (Keccak-f[1600])</td>
+      <td>Binary tree hash</td>
+    </tr>
+  `;
+}
+
+function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
+  return `
+    <div class="algo-card">
+      <h4>${id.toUpperCase()}</h4>
+      <p class="algo-meta">Changed: <strong>${data.diffBits}/256</strong> (${data.diffPercent.toFixed(2)}%)</p>
+      <div class="bit-grid" aria-label="${id} changed bit grid">
+        ${data.changedBitMap
+          .map(
+            (changed, index) =>
+              `<button class="bit-cell ${changed ? 'changed' : 'same'}" style="transition-delay:${index * 2}ms" title="Bit ${index + 1}">${index + 1}</button>`,
+          )
+          .join('')}
+      </div>
+    </div>
+  `;
+}
+
+function buildAppHtml(): string {
+  return `
+    <header class="topbar">
+      <div>
+        <span class="badge">crypto-lab portfolio demo</span>
+        <h1>Hash Zoo - crypto-lab</h1>
+        <p>Compare SHA-256, SHA3-256, and BLAKE3 internals in one live playground.</p>
+      </div>
+      <button id="theme-toggle" class="ghost-btn" type="button" aria-label="Toggle theme">Toggle theme</button>
+    </header>
+
+    <section class="panel" id="hash-comparison">
+      <h2>Section A - Hash Comparison</h2>
+      <label for="message-input">Message</label>
+      <textarea id="message-input" rows="4">${defaultMessage}</textarea>
+      <div class="button-row">
+        <button id="hash-btn" type="button">Hash All Three</button>
+        <button id="padding-btn" class="ghost-btn" type="button">Padding info</button>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th></th>
+              <th>SHA-256</th>
+              <th>SHA3-256</th>
+              <th>BLAKE3</th>
+            </tr>
+          </thead>
+          <tbody id="hash-results"></tbody>
+        </table>
+      </div>
+      <p class="consistency">Same input -> same output.</p>
+    </section>
+
+    <section class="panel" id="avalanche-section">
+      <h2>Section B - Avalanche Effect</h2>
+      <p id="message-preview"></p>
+      <label for="bit-slider">Bit position</label>
+      <input id="bit-slider" type="range" min="0" value="0" />
+      <p id="bit-label"></p>
+      <button id="analyze-btn" type="button">Analyze Avalanche</button>
+      <div id="avalanche-grids" class="avalanche-wrap"></div>
+      <p class="ideal-note">Ideal strong hash behavior is near 50% output-bit change.</p>
+    </section>
+
+    <section class="panel" id="construction-section">
+      <h2>Section C - Construction Comparison</h2>
+      <div class="diagram-row">
+        <article class="diagram-card">
+          <h3>SHA-256 (Merkle-Damgaard)</h3>
+          <svg viewBox="0 0 520 190" role="img" aria-label="SHA-256 merkle damgaard diagram">
+            <rect x="12" y="70" width="90" height="40" rx="8"/><text x="57" y="95">Message</text>
+            <rect x="128" y="70" width="120" height="40" rx="8"/><text x="188" y="95">Pad 512b</text>
+            <rect x="274" y="20" width="100" height="40" rx="8"/><text x="324" y="45">IV</text>
+            <rect x="274" y="70" width="100" height="40" rx="8"/><text x="324" y="95">Block 1</text>
+            <rect x="396" y="70" width="100" height="40" rx="8"/><text x="446" y="95">Block 2</text>
+            <line x1="102" y1="90" x2="128" y2="90"/><line x1="248" y1="90" x2="274" y2="90"/>
+            <line x1="374" y1="90" x2="396" y2="90"/><line x1="324" y1="60" x2="324" y2="70"/>
+            <rect x="396" y="130" width="100" height="40" rx="8"/><text x="446" y="155">Final Hash</text>
+            <line x1="446" y1="110" x2="446" y2="130"/>
+          </svg>
+          <p>Length extension attack possible on bare MD.</p>
+        </article>
+
+        <article class="diagram-card">
+          <h3>SHA-3 (Sponge)</h3>
+          <svg viewBox="0 0 520 190" role="img" aria-label="SHA-3 sponge diagram">
+            <rect x="16" y="70" width="90" height="40" rx="8"/><text x="61" y="95">Message</text>
+            <rect x="132" y="70" width="120" height="40" rx="8"/><text x="192" y="95">Absorb</text>
+            <rect x="278" y="30" width="200" height="120" rx="10"/>
+            <line x1="278" y1="95" x2="478" y2="95"/>
+            <text x="378" y="82">Rate 1088</text><text x="378" y="122">Capacity 512</text>
+            <rect x="132" y="130" width="120" height="40" rx="8"/><text x="192" y="155">Squeeze</text>
+            <line x1="106" y1="90" x2="132" y2="90"/><line x1="252" y1="90" x2="278" y2="90"/>
+            <line x1="278" y1="150" x2="252" y2="150"/><line x1="132" y1="150" x2="106" y2="150"/>
+            <text x="26" y="155">256-bit out</text>
+          </svg>
+          <p>No length extension. Rate/capacity trade-off.</p>
+        </article>
+
+        <article class="diagram-card">
+          <h3>BLAKE3 (Tree)</h3>
+          <svg viewBox="0 0 520 190" role="img" aria-label="BLAKE3 tree diagram">
+            <circle cx="60" cy="150" r="14"/><circle cx="150" cy="150" r="14"/>
+            <circle cx="240" cy="150" r="14"/><circle cx="330" cy="150" r="14"/>
+            <circle cx="105" cy="100" r="14"/><circle cx="285" cy="100" r="14"/>
+            <circle cx="195" cy="50" r="16"/>
+            <line x1="60" y1="136" x2="105" y2="114"/><line x1="150" y1="136" x2="105" y2="114"/>
+            <line x1="240" y1="136" x2="285" y2="114"/><line x1="330" y1="136" x2="285" y2="114"/>
+            <line x1="105" y1="86" x2="195" y2="66"/><line x1="285" y1="86" x2="195" y2="66"/>
+            <text x="28" y="175">Leaf chunks</text><text x="158" y="28">Root hash</text>
+          </svg>
+          <p>Parallelizable, SIMD-friendly, fastest of the three.</p>
+        </article>
+      </div>
+    </section>
+
+    <section class="panel" id="info-panel">
+      <h2>Info Panel</h2>
+      <div class="tabs" role="tablist">
+        <button class="tab is-active" data-tab="md">Merkle-Damgaard (SHA-256)</button>
+        <button class="tab" data-tab="sponge">Sponge Construction (SHA-3)</button>
+        <button class="tab" data-tab="tree">Tree Hashing (BLAKE3)</button>
+        <button class="tab" data-tab="choose">Choosing a Hash Function</button>
+      </div>
+      <div class="tab-panel is-active" data-panel="md">
+        <p>SHA-256 uses a Davies-Meyer style compression approach over 64 rounds and fixed IV constants derived from square roots of primes. Bare Merkle-Damgaard hashes are length-extension vulnerable, while HMAC-SHA256 remains safe because the key is mixed on both inner and outer passes.</p>
+      </div>
+      <div class="tab-panel" data-panel="sponge">
+        <p>SHA3-256 is built from Keccak-f[1600], alternating absorb and squeeze phases with rate/capacity partitioning. Its sponge structure was standardized to provide a distinct design line from SHA-2 and is resistant to length extension by construction.</p>
+      </div>
+      <div class="tab-panel" data-panel="tree">
+        <p>BLAKE3 uses a Bao-compatible binary tree over 1024-byte chunks with parent-node chaining values. Tree hashing makes parallel processing natural, maps well to SIMD, and supports XOF/KDF style key derivation modes.</p>
+      </div>
+      <div class="tab-panel" data-panel="choose">
+        <ul>
+          <li>Integrity check, fast: BLAKE3</li>
+          <li>Password hashing: Argon2id (not these hash functions)</li>
+          <li>HMAC/PRF: SHA-256 or SHA-3 (BLAKE3 is also viable)</li>
+          <li>NIST compliance required: SHA-256 or SHA-3</li>
+          <li>Length extension concern without HMAC: SHA-3 or BLAKE3</li>
+        </ul>
+      </div>
+      <details>
+        <summary>Why this matters</summary>
+        <p>SHA-256 and SHA-3 produce the same output size and both look like random noise, but their internal designs are completely different. SHA-2 uses a sequential Merkle-Damgaard construction that processes blocks one at a time. SHA-3 uses a sponge that absorbs input and squeezes output, making it immune to length extension attacks by design. BLAKE3 goes further: it is a binary tree of hashes, so it can be computed in parallel across CPU cores. Understanding the construction tells you which attack surface you are accepting.</p>
+      </details>
+    </section>
+
+    <footer class="panel footer-panel">
+      <nav>
+        <a href="https://systemslibrarian.github.io/crypto-lab/babel-hash/" target="_blank" rel="noreferrer">babel-hash</a>
+        <a href="https://systemslibrarian.github.io/crypto-lab/kdf-chain/" target="_blank" rel="noreferrer">kdf-chain</a>
+        <a href="https://systemslibrarian.github.io/crypto-lab/corrupted-oracle/" target="_blank" rel="noreferrer">corrupted-oracle</a>
+        <a href="https://systemslibrarian.github.io/crypto-lab/phantom-vault/" target="_blank" rel="noreferrer">phantom-vault</a>
+      </nav>
+    </footer>
+
+    <dialog id="padding-modal">
+      <h3>Padding Details</h3>
+      <pre id="padding-content"></pre>
+      <button id="close-modal" type="button">Close</button>
+    </dialog>
+  `;
+}
+
+function wireTabs(root: HTMLElement): void {
+  const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('.tab'));
+  const panels = Array.from(root.querySelectorAll<HTMLElement>('.tab-panel'));
+
+  tabs.forEach((tab) => {
+    tab.addEventListener('click', () => {
+      tabs.forEach((button) => button.classList.remove('is-active'));
+      panels.forEach((panel) => panel.classList.remove('is-active'));
+      tab.classList.add('is-active');
+      const target = tab.dataset.tab;
+      root.querySelector<HTMLElement>(`.tab-panel[data-panel="${target}"]`)?.classList.add('is-active');
+    });
+  });
+}
+
+async function copyHash(event: Event): Promise<void> {
+  const target = event.target as HTMLElement | null;
+  if (!target || !target.classList.contains('copy-btn')) {
+    return;
+  }
+  const hex = target.getAttribute('data-copy') ?? '';
+  await navigator.clipboard.writeText(hex);
+  target.textContent = 'Copied';
+  setTimeout(() => {
+    target.textContent = 'Copy';
+  }, 900);
+}
+
+export function initHashZoo(): void {
+  const app = document.querySelector<HTMLDivElement>('#app');
+  if (!app) {
+    return;
+  }
+
+  app.innerHTML = buildAppHtml();
+
+  const messageInput = app.querySelector<HTMLTextAreaElement>('#message-input');
+  const hashBtn = app.querySelector<HTMLButtonElement>('#hash-btn');
+  const resultsBody = app.querySelector<HTMLTableSectionElement>('#hash-results');
+  const themeToggle = app.querySelector<HTMLButtonElement>('#theme-toggle');
+  const slider = app.querySelector<HTMLInputElement>('#bit-slider');
+  const bitLabel = app.querySelector<HTMLParagraphElement>('#bit-label');
+  const messagePreview = app.querySelector<HTMLParagraphElement>('#message-preview');
+  const analyzeBtn = app.querySelector<HTMLButtonElement>('#analyze-btn');
+  const grids = app.querySelector<HTMLDivElement>('#avalanche-grids');
+  const paddingBtn = app.querySelector<HTMLButtonElement>('#padding-btn');
+  const modal = app.querySelector<HTMLDialogElement>('#padding-modal');
+  const closeModalBtn = app.querySelector<HTMLButtonElement>('#close-modal');
+  const paddingContent = app.querySelector<HTMLElement>('#padding-content');
+
+  if (
+    !messageInput ||
+    !hashBtn ||
+    !resultsBody ||
+    !themeToggle ||
+    !slider ||
+    !bitLabel ||
+    !messagePreview ||
+    !analyzeBtn ||
+    !grids ||
+    !paddingBtn ||
+    !modal ||
+    !closeModalBtn ||
+    !paddingContent
+  ) {
+    return;
+  }
+
+  const runHash = (): void => {
+    const results = hashAll(messageInput.value);
+    resultsBody.innerHTML = makeHashRows(results);
+  };
+
+  const updateSliderContext = (): void => {
+    const max = maxBitPosition(messageInput.value);
+    slider.max = String(max);
+    const clamped = Math.min(Number(slider.value), max);
+    slider.value = String(clamped);
+    messagePreview.textContent = `Message: ${messageInput.value || '(empty)'}`;
+    bitLabel.textContent = describeBitFlip(messageInput.value, clamped).summary;
+  };
+
+  const runAvalanche = (): void => {
+    if (messageInput.value.length === 0) {
+      grids.innerHTML = '<p>Add a message to analyze avalanche effect.</p>';
+      return;
+    }
+
+    const bitPosition = Number(slider.value);
+    const result = avalancheAnalysis(messageInput.value, bitPosition);
+    grids.innerHTML = [
+      renderGrid(result.sha256, 'sha256'),
+      renderGrid(result.sha3, 'sha3-256'),
+      renderGrid(result.blake3, 'blake3'),
+    ].join('');
+    requestAnimationFrame(() => {
+      grids.querySelectorAll('.bit-cell').forEach((cell) => {
+        cell.classList.add('visible');
+      });
+    });
+  };
+
+  const showPadding = (): void => {
+    const info = paddingInfo(messageInput.value);
+    paddingContent.textContent = [
+      `SHA-256 padded block hex:\n${info.sha256Padding}`,
+      `SHA-3 rate: ${info.sha3Rate} bits`,
+      `SHA-3 capacity: ${info.sha3Capacity} bits`,
+    ].join('\n\n');
+    modal.showModal();
+  };
+
+  hashBtn.addEventListener('click', runHash);
+  analyzeBtn.addEventListener('click', runAvalanche);
+  slider.addEventListener('input', () => {
+    updateSliderContext();
+    runAvalanche();
+  });
+  messageInput.addEventListener('input', () => {
+    updateSliderContext();
+    runHash();
+    runAvalanche();
+  });
+
+  themeToggle.addEventListener('click', () => {
+    const nextTheme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.body.dataset.theme = nextTheme;
+  });
+
+  paddingBtn.addEventListener('click', showPadding);
+  closeModalBtn.addEventListener('click', () => modal.close());
+  modal.addEventListener('click', (event) => {
+    if (event.target === modal) {
+      modal.close();
+    }
+  });
+
+  app.addEventListener('click', (event) => {
+    void copyHash(event);
+  });
+
+  wireTabs(app);
+
+  document.body.dataset.theme = 'light';
+  updateSliderContext();
+  runHash();
+  runAvalanche();
+}
