@@ -11,7 +11,7 @@ function renderByteSpans(hex: string): string {
 }
 
 function formatMicros(ms: number): string {
-  return `${(ms * 1000).toFixed(2)} us`;
+  return `${(ms * 1000).toFixed(2)} µs`;
 }
 
 function makeHashRows(results: HashResults): string {
@@ -32,7 +32,7 @@ function makeHashRows(results: HashResults): string {
       </td>
     </tr>
     <tr>
-      <th>Time (avg us)</th>
+      <th>Time (avg µs)</th>
       <td>${formatMicros(results.sha256.timeMs)}</td>
       <td>${formatMicros(results.sha3.timeMs)}</td>
       <td>${formatMicros(results.blake3.timeMs)}</td>
@@ -273,10 +273,15 @@ async function copyHash(event: Event): Promise<void> {
     return;
   }
   const hex = target.getAttribute('data-copy') ?? '';
-  await navigator.clipboard.writeText(hex);
-  target.textContent = 'Copied';
   const liveRegion = document.getElementById('aria-live-region');
-  if (liveRegion) { liveRegion.textContent = 'Hash copied to clipboard'; }
+  try {
+    await navigator.clipboard.writeText(hex);
+    target.textContent = 'Copied';
+    if (liveRegion) { liveRegion.textContent = 'Hash copied to clipboard'; }
+  } catch {
+    target.textContent = 'Failed';
+    if (liveRegion) { liveRegion.textContent = 'Copy failed'; }
+  }
   setTimeout(() => {
     target.textContent = 'Copy';
     if (liveRegion) { liveRegion.textContent = ''; }
@@ -351,8 +356,10 @@ export function initHashZoo(): void {
       renderGrid(result.blake3, 'blake3'),
     ].join('');
     requestAnimationFrame(() => {
-      grids.querySelectorAll('.bit-cell').forEach((cell) => {
-        cell.classList.add('visible');
+      requestAnimationFrame(() => {
+        grids.querySelectorAll('.bit-cell').forEach((cell) => {
+          cell.classList.add('visible');
+        });
       });
     });
   };
