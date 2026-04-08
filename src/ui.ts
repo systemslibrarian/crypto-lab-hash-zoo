@@ -63,11 +63,11 @@ function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
     <div class="algo-card">
       <h4>${id.toUpperCase()}</h4>
       <p class="algo-meta">Changed: <strong>${data.diffBits}/256</strong> (${data.diffPercent.toFixed(2)}%)</p>
-      <div class="bit-grid" aria-label="${id} changed bit grid">
+      <div class="bit-grid" role="img" aria-label="${id}: ${data.diffBits} of 256 bits changed (${data.diffPercent.toFixed(1)}%)">
         ${data.changedBitMap
           .map(
             (changed, index) =>
-              `<button class="bit-cell ${changed ? 'changed' : 'same'}" style="transition-delay:${index * 2}ms" title="Bit ${index + 1}">${index + 1}</button>`,
+              `<div class="bit-cell ${changed ? 'changed' : 'same'}" style="transition-delay:${index * 2}ms" title="Bit ${index + 1}: ${changed ? 'changed' : 'same'}"></div>`,
           )
           .join('')}
       </div>
@@ -77,6 +77,7 @@ function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
 
 function buildAppHtml(): string {
   return `
+    <a href="#hash-comparison" class="skip-link">Skip to main content</a>
     <header class="topbar">
       <div>
         <span class="badge">crypto-lab portfolio demo</span>
@@ -85,6 +86,8 @@ function buildAppHtml(): string {
       </div>
       <button id="theme-toggle" type="button" style="position: absolute; top: 0; right: 0" aria-label="Switch to light mode"></button>
     </header>
+
+    <main>
 
     <section class="panel" id="hash-comparison">
       <h2>Section A - Hash Comparison</h2>
@@ -95,7 +98,8 @@ function buildAppHtml(): string {
         <button id="padding-btn" class="ghost-btn" type="button">Padding info</button>
       </div>
       <div class="table-wrap">
-        <table>
+        <table aria-label="Hash comparison results">
+          <caption class="sr-only">Side-by-side comparison of SHA-256, SHA3-256, and BLAKE3</caption>
           <thead>
             <tr>
               <th></th>
@@ -175,22 +179,22 @@ function buildAppHtml(): string {
 
     <section class="panel" id="info-panel">
       <h2>Info Panel</h2>
-      <div class="tabs" role="tablist">
-        <button class="tab is-active" data-tab="md">Merkle-Damgaard (SHA-256)</button>
-        <button class="tab" data-tab="sponge">Sponge Construction (SHA-3)</button>
-        <button class="tab" data-tab="tree">Tree Hashing (BLAKE3)</button>
-        <button class="tab" data-tab="choose">Choosing a Hash Function</button>
+      <div class="tabs" role="tablist" aria-label="Hash construction info">
+        <button class="tab is-active" role="tab" aria-selected="true" aria-controls="panel-md" id="tab-md" data-tab="md">Merkle-Damgaard (SHA-256)</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="panel-sponge" id="tab-sponge" data-tab="sponge">Sponge Construction (SHA-3)</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="panel-tree" id="tab-tree" data-tab="tree">Tree Hashing (BLAKE3)</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="panel-choose" id="tab-choose" data-tab="choose">Choosing a Hash Function</button>
       </div>
-      <div class="tab-panel is-active" data-panel="md">
+      <div class="tab-panel is-active" role="tabpanel" id="panel-md" aria-labelledby="tab-md" data-panel="md">
         <p>SHA-256 uses a Davies-Meyer style compression approach over 64 rounds and fixed IV constants derived from square roots of primes. Bare Merkle-Damgaard hashes are length-extension vulnerable, while HMAC-SHA256 remains safe because the key is mixed on both inner and outer passes.</p>
       </div>
-      <div class="tab-panel" data-panel="sponge">
+      <div class="tab-panel" role="tabpanel" id="panel-sponge" aria-labelledby="tab-sponge" data-panel="sponge">
         <p>SHA3-256 is built from Keccak-f[1600], alternating absorb and squeeze phases with rate/capacity partitioning. Its sponge structure was standardized to provide a distinct design line from SHA-2 and is resistant to length extension by construction.</p>
       </div>
-      <div class="tab-panel" data-panel="tree">
+      <div class="tab-panel" role="tabpanel" id="panel-tree" aria-labelledby="tab-tree" data-panel="tree">
         <p>BLAKE3 uses a Bao-compatible binary tree over 1024-byte chunks with parent-node chaining values. Tree hashing makes parallel processing natural, maps well to SIMD, and supports XOF/KDF style key derivation modes.</p>
       </div>
-      <div class="tab-panel" data-panel="choose">
+      <div class="tab-panel" role="tabpanel" id="panel-choose" aria-labelledby="tab-choose" data-panel="choose">
         <ul>
           <li>Integrity check, fast: BLAKE3</li>
           <li>Password hashing: Argon2id (not these hash functions)</li>
@@ -204,6 +208,7 @@ function buildAppHtml(): string {
         <p>SHA-256 and SHA-3 produce the same output size and both look like random noise, but their internal designs are completely different. SHA-2 uses a sequential Merkle-Damgaard construction that processes blocks one at a time. SHA-3 uses a sponge that absorbs input and squeezes output, making it immune to length extension attacks by design. BLAKE3 goes further: it is a binary tree of hashes, so it can be computed in parallel across CPU cores. Understanding the construction tells you which attack surface you are accepting.</p>
       </details>
     </section>
+    </main>
 
     <footer class="panel footer-panel">
       <nav>
@@ -214,11 +219,12 @@ function buildAppHtml(): string {
       </nav>
     </footer>
 
-    <dialog id="padding-modal">
-      <h3>Padding Details</h3>
+    <dialog id="padding-modal" aria-labelledby="padding-modal-title">
+      <h3 id="padding-modal-title">Padding Details</h3>
       <pre id="padding-content"></pre>
       <button id="close-modal" type="button">Close</button>
     </dialog>
+    <div id="aria-live-region" class="sr-only" aria-live="polite" aria-atomic="true"></div>
   `;
 }
 
@@ -226,13 +232,37 @@ function wireTabs(root: HTMLElement): void {
   const tabs = Array.from(root.querySelectorAll<HTMLButtonElement>('.tab'));
   const panels = Array.from(root.querySelectorAll<HTMLElement>('.tab-panel'));
 
-  tabs.forEach((tab) => {
-    tab.addEventListener('click', () => {
-      tabs.forEach((button) => button.classList.remove('is-active'));
-      panels.forEach((panel) => panel.classList.remove('is-active'));
-      tab.classList.add('is-active');
-      const target = tab.dataset.tab;
-      root.querySelector<HTMLElement>(`.tab-panel[data-panel="${target}"]`)?.classList.add('is-active');
+  function activateTab(tab: HTMLButtonElement): void {
+    tabs.forEach((button) => {
+      button.classList.remove('is-active');
+      button.setAttribute('aria-selected', 'false');
+      button.setAttribute('tabindex', '-1');
+    });
+    panels.forEach((panel) => panel.classList.remove('is-active'));
+
+    tab.classList.add('is-active');
+    tab.setAttribute('aria-selected', 'true');
+    tab.removeAttribute('tabindex');
+    tab.focus();
+
+    const target = tab.dataset.tab;
+    root.querySelector<HTMLElement>(`.tab-panel[data-panel="${target}"]`)?.classList.add('is-active');
+  }
+
+  tabs.forEach((tab, index) => {
+    if (!tab.classList.contains('is-active')) {
+      tab.setAttribute('tabindex', '-1');
+    }
+    tab.addEventListener('click', () => activateTab(tab));
+    tab.addEventListener('keydown', (event: KeyboardEvent) => {
+      let nextIndex = index;
+      if (event.key === 'ArrowRight') { nextIndex = (index + 1) % tabs.length; }
+      else if (event.key === 'ArrowLeft') { nextIndex = (index - 1 + tabs.length) % tabs.length; }
+      else if (event.key === 'Home') { nextIndex = 0; }
+      else if (event.key === 'End') { nextIndex = tabs.length - 1; }
+      else { return; }
+      event.preventDefault();
+      activateTab(tabs[nextIndex]);
     });
   });
 }
@@ -245,8 +275,11 @@ async function copyHash(event: Event): Promise<void> {
   const hex = target.getAttribute('data-copy') ?? '';
   await navigator.clipboard.writeText(hex);
   target.textContent = 'Copied';
+  const liveRegion = document.getElementById('aria-live-region');
+  if (liveRegion) { liveRegion.textContent = 'Hash copied to clipboard'; }
   setTimeout(() => {
     target.textContent = 'Copy';
+    if (liveRegion) { liveRegion.textContent = ''; }
   }, 900);
 }
 
