@@ -83,7 +83,7 @@ function buildAppHtml(): string {
         <h1>Hash Zoo - crypto-lab</h1>
         <p>Compare SHA-256, SHA3-256, and BLAKE3 internals in one live playground.</p>
       </div>
-      <button id="theme-toggle" class="ghost-btn" type="button" aria-label="Toggle theme">Toggle theme</button>
+      <button id="theme-toggle" type="button" style="position: absolute; top: 0; right: 0" aria-label="Switch to light mode"></button>
     </header>
 
     <section class="panel" id="hash-comparison">
@@ -346,9 +346,20 @@ export function initHashZoo(): void {
     runAvalanche();
   });
 
-  themeToggle.addEventListener('click', () => {
-    const nextTheme = document.body.dataset.theme === 'dark' ? 'light' : 'dark';
-    document.body.dataset.theme = nextTheme;
+  const toggle = themeToggle;
+
+  function syncToggle(): void {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    toggle.textContent = isDark ? '\u{1F319}' : '\u{2600}\u{FE0F}';
+    toggle.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+
+  toggle.addEventListener('click', () => {
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    const next = isDark ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-theme', next);
+    localStorage.setItem('theme', next);
+    syncToggle();
   });
 
   paddingBtn.addEventListener('click', showPadding);
@@ -365,7 +376,7 @@ export function initHashZoo(): void {
 
   wireTabs(app);
 
-  document.body.dataset.theme = 'light';
+  syncToggle();
   updateSliderContext();
   runHash();
   runAvalanche();

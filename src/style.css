@@ -19,7 +19,7 @@
   --shadow: 0 20px 45px rgba(94, 62, 13, 0.13);
 }
 
-body[data-theme='dark'] {
+html[data-theme='dark'] {
   --bg: #14120f;
   --bg-accent: radial-gradient(circle at 10% 0%, #3f2d16, transparent 45%),
     radial-gradient(circle at 90% 20%, #17323c, transparent 42%),
@@ -82,12 +82,32 @@ p {
 }
 
 .topbar {
+  position: relative;
   padding: 1.25rem;
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 1rem;
   animation: rise 0.45s ease-out;
+}
+
+#theme-toggle {
+  position: absolute;
+  top: 0;
+  right: 0;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 50%;
+  border: 1px solid var(--border);
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 1.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  cursor: pointer;
+  line-height: 1;
 }
 
 .panel {
