@@ -1,4 +1,3 @@
-const decoder = new TextDecoder();
 const encoder = new TextEncoder();
 
 export interface BitFlipLabel {
@@ -30,14 +29,14 @@ export function describeBitFlip(message: string, bitPosition: number): BitFlipLa
   const modified = bytes.slice();
   modified[byteIndex] ^= 1 << (7 - bitOffsetInChar);
 
-  const originalChar = decoder.decode(bytes.slice(byteIndex, byteIndex + 1)) || '\\u0000';
-  const modifiedChar = decoder.decode(modified.slice(byteIndex, byteIndex + 1)) || '\\u0000';
+  const originalHex = bytes[byteIndex].toString(16).padStart(2, '0');
+  const modifiedHex = modified[byteIndex].toString(16).padStart(2, '0');
 
   return {
     charIndex: byteIndex,
     bitOffsetInChar,
-    originalChar,
-    modifiedChar,
-    summary: `Flipping bit ${bitPosition} (byte ${byteIndex}, bit ${bitOffsetInChar}) changes '${originalChar}' -> '${modifiedChar}'.`,
+    originalChar: `0x${originalHex}`,
+    modifiedChar: `0x${modifiedHex}`,
+    summary: `Flipping bit ${bitPosition} (byte ${byteIndex}, bit ${bitOffsetInChar}) changes byte 0x${originalHex} -> 0x${modifiedHex}.`,
   };
 }

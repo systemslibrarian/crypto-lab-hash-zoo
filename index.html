@@ -5,11 +5,18 @@
     <script>
       (function () {
         const saved = localStorage.getItem('theme');
-        document.documentElement.setAttribute('data-theme', saved ?? 'dark');
+        const prefersLight =
+          window.matchMedia &&
+          window.matchMedia('(prefers-color-scheme: light)').matches;
+        const theme = saved ?? (prefersLight ? 'light' : 'dark');
+        document.documentElement.setAttribute('data-theme', theme);
       })();
     </script>
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="color-scheme" content="dark light" />
+    <meta name="theme-color" content="#14120f" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#fff8ed" media="(prefers-color-scheme: light)" />
     <meta
       name="description"
       content="Visualize SHA-256, SHA-3, and BLAKE3 internals side-by-side. Explore Merkle-Damgard, sponge construction, and tree hashing with live avalanche analysis."
