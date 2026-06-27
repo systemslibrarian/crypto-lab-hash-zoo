@@ -37,6 +37,6 @@ Type or paste any message into the textarea and click "Hash All Three" to see he
 ---
 
 **Part of the [crypto-lab](https://systemslibrarian.github.io/crypto-lab/) portfolio:**
-[babel-hash](https://systemslibrarian.github.io/crypto-lab/babel-hash/) · [kdf-chain](https://systemslibrarian.github.io/crypto-lab/kdf-chain/) · [corrupted-oracle](https://systemslibrarian.github.io/crypto-lab/corrupted-oracle/) · [phantom-vault](https://systemslibrarian.github.io/crypto-lab/phantom-vault/)
+[babel-hash](https://systemslibrarian.github.io/crypto-lab-babel-hash/) · [kdf-chain](https://systemslibrarian.github.io/crypto-lab-kdf-chain/) · [corrupted-oracle](https://systemslibrarian.github.io/crypto-lab-corrupted-oracle/) · [phantom-vault](https://systemslibrarian.github.io/crypto-lab-phantom-vault/)
 
 "So whether you eat or drink or whatever you do, do it all for the glory of God." — 1 Corinthians 10:31
