@@ -234,6 +234,14 @@ function buildAppHtml(): string {
     </main>
 
     <footer class="panel footer-panel">
+      <nav aria-label="Related demos">
+        Related demos:
+        <a href="https://systemslibrarian.github.io/crypto-lab-babel-hash/" target="_blank" rel="noreferrer">crypto-lab-babel-hash</a>
+        <a href="https://systemslibrarian.github.io/crypto-lab-merkle-vault/" target="_blank" rel="noreferrer">crypto-lab-merkle-vault</a>
+        <a href="https://systemslibrarian.github.io/crypto-lab-collision-vault/" target="_blank" rel="noreferrer">crypto-lab-collision-vault</a>
+        <a href="https://systemslibrarian.github.io/crypto-lab-mac-race/" target="_blank" rel="noreferrer">crypto-lab-mac-race</a>
+        <a href="https://systemslibrarian.github.io/crypto-lab-kdf-chain/" target="_blank" rel="noreferrer">crypto-lab-kdf-chain</a>
+      </nav>
       <nav>
         <a href="https://systemslibrarian.github.io/crypto-lab/babel-hash/" target="_blank" rel="noreferrer">babel-hash</a>
         <a href="https://systemslibrarian.github.io/crypto-lab/kdf-chain/" target="_blank" rel="noreferrer">kdf-chain</a>
