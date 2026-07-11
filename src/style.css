@@ -1,4 +1,6 @@
 :root {
+  color-scheme: light;
+
   --font-body: 'Space Grotesk', 'Segoe UI', sans-serif;
   --font-head: 'Sora', 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', monospace;
@@ -23,6 +25,8 @@
 }
 
 html[data-theme='dark'] {
+  color-scheme: dark;
+
   --bg: #14120f;
   --bg-accent: radial-gradient(circle at 10% 0%, #3f2d16, transparent 45%),
     radial-gradient(circle at 90% 20%, #17323c, transparent 42%),
@@ -44,6 +48,10 @@ html[data-theme='dark'] {
 
 * {
   box-sizing: border-box;
+}
+
+html {
+  background-color: var(--bg);
 }
 
 body {
@@ -83,7 +91,7 @@ p {
 
 .topbar,
 .panel {
-  background: var(--surface);
+  background-color: var(--surface);
   border: 1px solid var(--border);
   border-radius: 20px;
   box-shadow: var(--shadow);
@@ -108,7 +116,7 @@ p {
   min-height: 2.75rem;
   border-radius: 50%;
   border: 1px solid var(--border);
-  background: var(--surface-soft);
+  background-color: var(--surface-soft);
   color: var(--text);
   font-size: 1.25rem;
   font-weight: 400;
@@ -131,7 +139,7 @@ p {
   padding: 0.2rem 0.6rem;
   border: 1px dashed var(--primary);
   color: var(--primary-strong);
-  background: rgba(15, 118, 110, 0.08);
+  background-color: rgba(15, 118, 110, 0.08);
   border-radius: 999px;
   font-size: 0.85rem;
 }
@@ -147,7 +155,7 @@ textarea {
   margin-top: 0.45rem;
   border-radius: 12px;
   border: 1px solid var(--border);
-  background: var(--surface-soft);
+  background-color: var(--surface-soft);
   color: var(--text);
   padding: 0.8rem;
 }
@@ -155,7 +163,7 @@ textarea {
 button {
   border: 1px solid var(--primary);
   border-radius: 10px;
-  background: var(--primary);
+  background-color: var(--primary);
   color: var(--on-primary);
   padding: 0.5rem 0.9rem;
   min-height: 2.75rem;
@@ -173,7 +181,7 @@ button:active {
 }
 
 .ghost-btn {
-  background: transparent;
+  background-color: transparent;
   color: var(--primary-strong);
 }
 
@@ -211,14 +219,14 @@ td {
 }
 
 thead th[scope='col'] {
-  background: var(--surface-soft);
+  background-color: var(--surface-soft);
 }
 
 th[scope='row'] {
   position: sticky;
   left: 0;
   z-index: 1;
-  background: var(--surface-soft);
+  background-color: var(--surface-soft);
   white-space: nowrap;
 }
 
@@ -232,7 +240,7 @@ th[scope='row'] {
 .byte {
   padding: 0.12rem 0.2rem;
   border-radius: 4px;
-  background: rgba(21, 94, 117, 0.12);
+  background-color: rgba(21, 94, 117, 0.12);
 }
 
 .copy-btn {
@@ -263,7 +271,7 @@ th[scope='row'] {
   font-size: 0.85rem;
   padding: 0.15rem 0.55rem;
   border-radius: 999px;
-  background: var(--surface-soft);
+  background-color: var(--surface-soft);
   border: 1px solid var(--border);
   white-space: nowrap;
 }
@@ -324,7 +332,7 @@ th[scope='row'] {
 }
 
 .swatch-ideal {
-  background: var(--primary-strong);
+  background-color: var(--primary-strong);
 }
 
 .empty-state {
@@ -337,14 +345,14 @@ th[scope='row'] {
   margin-top: 0.45rem;
   height: 0.6rem;
   border-radius: 999px;
-  background: var(--surface);
+  background-color: var(--surface);
   border: 1px solid var(--border);
 }
 
 .meter-fill {
   height: 100%;
   border-radius: inherit;
-  background: var(--muted);
+  background-color: var(--muted);
   transition: width 320ms ease;
 }
 
@@ -355,15 +363,15 @@ th[scope='row'] {
   left: 50%;
   width: 2px;
   transform: translateX(-50%);
-  background: var(--primary-strong);
+  background-color: var(--primary-strong);
 }
 
 .meter.is-good .meter-fill {
-  background: var(--primary);
+  background-color: var(--primary);
 }
 
 .meter.is-ideal .meter-fill {
-  background: var(--success);
+  background-color: var(--success);
 }
 
 .avalanche-wrap {
@@ -377,7 +385,7 @@ th[scope='row'] {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.7rem;
-  background: var(--surface-soft);
+  background-color: var(--surface-soft);
 }
 
 .algo-meta {
@@ -426,7 +434,7 @@ th[scope='row'] {
   border: 1px solid var(--border);
   border-radius: 12px;
   padding: 0.75rem;
-  background: var(--surface-soft);
+  background-color: var(--surface-soft);
 }
 
 svg {
@@ -457,14 +465,14 @@ svg text {
 }
 
 .tab {
-  background: transparent;
+  background-color: transparent;
   color: var(--text);
   border-color: var(--border);
 }
 
 .tab.is-active {
   color: var(--on-primary);
-  background: var(--primary);
+  background-color: var(--primary);
   border-color: var(--primary);
 }
 
@@ -501,17 +509,17 @@ dialog {
   border-radius: 14px;
   max-width: min(760px, calc(100vw - 2rem));
   color: var(--text);
-  background: var(--surface);
+  background-color: var(--surface);
 }
 
 dialog::backdrop {
-  background: rgba(0, 0, 0, 0.45);
+  background-color: rgba(0, 0, 0, 0.45);
 }
 
 pre {
   max-height: 340px;
   overflow: auto;
-  background: var(--surface-soft);
+  background-color: var(--surface-soft);
   border: 1px solid var(--border);
   border-radius: 8px;
   padding: 0.6rem;
@@ -561,7 +569,7 @@ pre {
     margin-bottom: 1.5rem;
     border: 1px solid var(--border);
     border-radius: 12px;
-    background: var(--surface-soft);
+    background-color: var(--surface-soft);
     overflow: hidden;
   }
 
@@ -569,7 +577,7 @@ pre {
     position: relative;
     padding: 0.8rem 1rem;
     text-align: center;
-    background: rgba(15, 118, 110, 0.06);
+    background-color: rgba(15, 118, 110, 0.06);
     border-bottom: 1px solid var(--border);
     font-size: 1.05rem;
     z-index: 0;
@@ -631,7 +639,7 @@ pre {
   top: 0;
   z-index: 100;
   padding: 0.5rem 1rem;
-  background: var(--primary);
+  background-color: var(--primary);
   color: var(--on-primary);
   border-radius: 0 0 8px 0;
   text-decoration: none;
