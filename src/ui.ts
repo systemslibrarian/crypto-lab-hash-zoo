@@ -91,11 +91,12 @@ function buildAppHtml(): string {
     <header class="cl-hero">
       <div class="cl-hero-main">
         <h1 class="cl-hero-title">Hash Zoo</h1>
-        <p class="cl-hero-sub">SHA-256 · SHA3-256 · BLAKE3 internals</p>
+        <p class="cl-hero-sub">SHA-256 · SHA3-256 · BLAKE3</p>
+        <p class="cl-hero-desc">Hashes the same message through Merkle-Damgard, sponge, and tree constructions side-by-side, then flips a single input bit so you can watch each design's avalanche scatter across the output.</p>
       </div>
       <aside class="cl-hero-why" aria-label="Why it matters">
         <span class="cl-hero-why-label">WHY IT MATTERS</span>
-        <p class="cl-hero-why-text">Hash functions turn any message into a fixed fingerprint behind passwords, downloads, and blockchains. Flip one input bit and the avalanche effect scrambles half the output; see how Merkle-Damgard, sponge, and tree designs deliver it.</p>
+        <p class="cl-hero-why-text">Hashes anchor passwords, file integrity, signatures, and blockchains. A strong avalanche is what makes them collision-resistant and hard to forge — and choosing the right construction decides whether you also dodge length-extension attacks.</p>
       </aside>
     </header>
 
