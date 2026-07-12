@@ -7,7 +7,7 @@ Hash Zoo is an interactive side-by-side comparison of three cryptographic hash f
 ## When to Use It
 
 - **Learning hash function internals.** The avalanche grid and construction diagrams make abstract concepts like sponge absorption and tree-parallel hashing concrete.
-- **Comparing performance characteristics.** The timed hash table shows relative throughput of SHA-256, SHA3-256, and BLAKE3 on identical input in the browser.
+- **Comparing performance characteristics.** The timed hash table shows a rough, indicative feel for the relative cost of SHA-256, SHA3-256, and BLAKE3 on identical input in the browser. It is *not* a benchmark — see the timing caveat below.
 - **Understanding construction trade-offs.** Side-by-side architecture diagrams clarify why SHA-3 resists length extension while bare Merkle-Damgård does not.
 - **Teaching or presenting cryptography.** The live controls (message textarea, bit-position slider) make this suitable for classroom or conference demos.
 - **Not for password hashing.** None of these hash functions are memory-hard; use Argon2id or similar KDFs for password storage.
@@ -18,6 +18,10 @@ Hash Zoo is an interactive side-by-side comparison of three cryptographic hash f
 **[systemslibrarian.github.io/crypto-lab-hash-zoo](https://systemslibrarian.github.io/crypto-lab-hash-zoo/)**
 
 Type or paste any message into the textarea and click "Hash All Three" to see hex output, average timing, and construction metadata for all three algorithms. Use the bit-position slider in Section B to flip a single bit and watch the 16×16 avalanche grid animate which output bits changed. Click "Padding info" to inspect the SHA-256 padded block and SHA-3 rate/capacity split.
+
+## About the Timings (read before comparing speeds)
+
+The "Time (avg µs)" row is an in-browser average over 100 iterations. It is deliberately labelled *indicative only*, both here and in the app, because single-digit-microsecond measurements taken with `performance.now()` in a JS engine are dominated by noise: JIT warmup, garbage-collection pauses, CPU frequency scaling, and background tab activity all move the numbers around. Do not read the ordering as a definitive speed ranking — on tiny inputs the three functions are all sub-microsecond and the differences are within measurement error. BLAKE3's real speed advantage shows up on large inputs with SIMD and multithreading, which a single-threaded browser loop cannot exercise. For a real comparison, benchmark native builds (for example `b3sum` vs `openssl dgst`) on megabyte-scale inputs. The digests themselves are exact and verified against known-answer test vectors (see below).
 
 ## What Can Go Wrong
 
@@ -43,6 +47,24 @@ cd crypto-lab-hash-zoo
 npm install
 npm run dev
 ```
+
+## Tests
+
+The hash wiring is covered by unit tests (Vitest) so a mislabelled or swapped algorithm cannot ship silently:
+
+```bash
+npm test        # known-answer vectors + property/round-trip tests
+npm run test:a11y   # Playwright + axe-core accessibility gate
+```
+
+`src/hasher.test.ts` asserts:
+
+- **Known-answer vectors.** SHA-256, SHA3-256, and BLAKE3 digests of `""` and `"abc"` are checked against the published standard vectors (FIPS 180-4, FIPS 202, BLAKE3 reference). Swapping a source import (for example `sha3` → `sha256`) fails these tests immediately.
+- **Distinctness.** The three algorithms produce different digests for the same input.
+- **Avalanche ~50%.** Averaged over many single-bit input flips, each algorithm changes close to half of the 256 output bits (asserted within 42–58%).
+- **Pure-function correctness.** `popcount` over all 256 byte values, `flipBit` (exactly one bit changed, input not mutated, MSB-first, range/empty guards), `diffBitmap` (bit locations and counts), and `paddingInfo` (SHA-256 Merkle–Damgård `0x80` marker, 512-bit block alignment, big-endian length tail; SHA-3 rate+capacity = 1600).
+
+`npm test` runs only the Vitest unit suite; the Playwright a11y suite in `e2e/` is excluded from it and run separately via `npm run test:a11y`.
 
 ## Related Demos
 

@@ -57,7 +57,7 @@ function avgTimedHash(input: Uint8Array, fn: (message: Uint8Array) => Uint8Array
   };
 }
 
-function popcount(byte: number): number {
+export function popcount(byte: number): number {
   let value = byte;
   let count = 0;
   while (value !== 0) {
@@ -67,7 +67,7 @@ function popcount(byte: number): number {
   return count;
 }
 
-function diffBitmap(a: Uint8Array, b: Uint8Array): { changedBitMap: boolean[]; diffBits: number } {
+export function diffBitmap(a: Uint8Array, b: Uint8Array): { changedBitMap: boolean[]; diffBits: number } {
   const changedBitMap = new Array<boolean>(HASH_BITS).fill(false);
   let diffBits = 0;
 
@@ -84,7 +84,7 @@ function diffBitmap(a: Uint8Array, b: Uint8Array): { changedBitMap: boolean[]; d
   return { changedBitMap, diffBits };
 }
 
-function flipBit(input: Uint8Array, bitPosition: number): Uint8Array {
+export function flipBit(input: Uint8Array, bitPosition: number): Uint8Array {
   if (input.length === 0) {
     throw new Error('Cannot flip bits in an empty message.');
   }
@@ -111,12 +111,33 @@ function analyzePair(original: Uint8Array, changed: Uint8Array): AvalanchePerAlg
   };
 }
 
+/**
+ * The three hash functions the zoo compares, exported so tests can assert the
+ * wiring against known-answer test vectors. A swapped or renamed import would
+ * change these digests and fail the KAT suite instead of shipping silently.
+ */
+export const HASH_FUNCTIONS: Record<'sha256' | 'sha3' | 'blake3', (message: Uint8Array) => Uint8Array> = {
+  sha256,
+  sha3: sha3_256,
+  blake3,
+};
+
+/** Pure digests with no timing, for testing and reuse. */
+export function digestAll(message: string): Record<'sha256' | 'sha3' | 'blake3', string> {
+  const messageBytes = encoder.encode(message);
+  return {
+    sha256: bytesToHex(HASH_FUNCTIONS.sha256(messageBytes)),
+    sha3: bytesToHex(HASH_FUNCTIONS.sha3(messageBytes)),
+    blake3: bytesToHex(HASH_FUNCTIONS.blake3(messageBytes)),
+  };
+}
+
 export function hashAll(message: string): HashResults {
   const messageBytes = encoder.encode(message);
   return {
-    sha256: avgTimedHash(messageBytes, sha256),
-    sha3: avgTimedHash(messageBytes, sha3_256),
-    blake3: avgTimedHash(messageBytes, blake3),
+    sha256: avgTimedHash(messageBytes, HASH_FUNCTIONS.sha256),
+    sha3: avgTimedHash(messageBytes, HASH_FUNCTIONS.sha3),
+    blake3: avgTimedHash(messageBytes, HASH_FUNCTIONS.blake3),
   };
 }
 

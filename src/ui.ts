@@ -119,6 +119,7 @@ function buildAppHtml(): string {
         </table>
       </div>
       <p class="consistency">Same input -> same output.</p>
+      <p class="timing-note">Timings are an in-browser average over 100 iterations, reported in microseconds. They are indicative only: JIT warmup, garbage collection, CPU throttling, and other tabs make single-digit-microsecond numbers noisy, so treat them as a rough feel for relative cost rather than a benchmark. For real comparisons, measure a native build (for example <code>b3sum</code> vs <code>openssl</code>) on large inputs.</p>
     </section>
 
     <section class="panel" id="avalanche-section">
