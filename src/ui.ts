@@ -85,16 +85,19 @@ function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
 function buildAppHtml(): string {
   return `
     <a href="#hash-comparison" class="skip-link">Skip to main content</a>
-    <header class="topbar">
-      <div>
-        <span class="badge">crypto-lab portfolio demo</span>
-        <h1>Hash Zoo - crypto-lab</h1>
-        <p>Compare SHA-256, SHA3-256, and BLAKE3 internals in one live playground.</p>
-      </div>
-      <button id="theme-toggle" type="button" aria-label="Switch to light mode" title="Toggle color theme"></button>
-    </header>
+    <button id="theme-toggle" type="button" aria-label="Switch to light mode" title="Toggle color theme"></button>
 
     <main>
+    <header class="cl-hero">
+      <div class="cl-hero-main">
+        <h1 class="cl-hero-title">Hash Zoo</h1>
+        <p class="cl-hero-sub">SHA-256 · SHA3-256 · BLAKE3 internals</p>
+      </div>
+      <aside class="cl-hero-why" aria-label="Why it matters">
+        <span class="cl-hero-why-label">WHY IT MATTERS</span>
+        <p class="cl-hero-why-text">Hash functions turn any message into a fixed fingerprint behind passwords, downloads, and blockchains. Flip one input bit and the avalanche effect scrambles half the output; see how Merkle-Damgard, sponge, and tree designs deliver it.</p>
+      </aside>
+    </header>
 
     <section class="panel" id="hash-comparison">
       <h2>Section A - Hash Comparison</h2>
