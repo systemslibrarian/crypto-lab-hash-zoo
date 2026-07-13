@@ -1,9 +1,14 @@
 import { describe, it, expect } from 'vitest';
 import { bytesToHex } from '@noble/hashes/utils.js';
+import { sha256 } from '@noble/hashes/sha2.js';
 import {
   digestAll,
   hashAll,
   avalancheAnalysis,
+  avalancheDistribution,
+  lengthExtend,
+  sha256GluePadding,
+  oneLineHash,
   paddingInfo,
   popcount,
   diffBitmap,
@@ -199,6 +204,77 @@ describe('avalanche effect (~50% of output bits flip on a 1-bit input change)', 
       expect(pair.diffPercent).toBeCloseTo((pair.diffBits / 256) * 100, 6);
       expect(pair.changedBitMap.filter(Boolean)).toHaveLength(pair.diffBits);
     }
+  });
+});
+
+describe('length extension (real SHA-256 forgery, not a mock)', () => {
+  it('forged hash equals SHA-256 of the reconstructed message, computed from scratch', () => {
+    const result = lengthExtend('secret-key||user=alice', '&role=admin');
+    // The demo asserts this at runtime; the test locks it as an invariant.
+    expect(result.verified).toBe(true);
+    expect(result.forgedHash).toBe(result.verifyHash);
+  });
+
+  it('the forged tag is derived from the digest+length only (independent of secret CONTENT)', () => {
+    // Two different secrets of the SAME length must yield the same forged tag
+    // ONLY when their published digests happen to match — which they will not.
+    // What we can assert: the forgery machinery reproduces a hash computable
+    // from scratch over secret||glue||append for any secret we pick.
+    for (const secret of ['abc', 'a-longer-secret-value', 'x'.repeat(120)]) {
+      const r = lengthExtend(secret, '&admin=1');
+      expect(r.verified).toBe(true);
+      // Independent recompute using the public digest reconstruction path.
+      const glue = sha256GluePadding(secret.length);
+      const enc2 = new TextEncoder();
+      const full = new Uint8Array([...enc2.encode(secret), ...glue, ...enc2.encode('&admin=1')]);
+      expect(r.forgedHash).toBe(bytesToHex(sha256(full)));
+    }
+  });
+
+  it('glue padding is valid SHA-256 Merkle-Damgard padding for the secret length', () => {
+    const secret = enc.encode('abc');
+    const glue = sha256GluePadding(secret.length);
+    // 0x80 marker first.
+    expect(glue[0]).toBe(0x80);
+    // secret + glue is a whole number of 64-byte blocks.
+    expect((secret.length + glue.length) % 64).toBe(0);
+    // Trailing 64 bits encode the secret bit-length, big-endian.
+    const tail = glue.slice(glue.length - 8);
+    const bitLen = tail.reduce((acc, b) => acc * 256n + BigInt(b), 0n);
+    expect(bitLen).toBe(BigInt(secret.length * 8));
+  });
+
+  it('an empty append still produces a valid extended hash', () => {
+    const r = lengthExtend('some-secret', '');
+    expect(r.verified).toBe(true);
+  });
+});
+
+describe('avalancheDistribution (statistical ~50% law)', () => {
+  it('mean output-diff over every input bit clusters near 50% for each algorithm', () => {
+    const msg = 'The quick brown fox jumps over the lazy dog';
+    for (const algo of ['sha256', 'sha3', 'blake3'] as const) {
+      const d = avalancheDistribution(msg, algo);
+      expect(d.percents.length).toBe(msg.length * 8);
+      expect(d.mean).toBeGreaterThan(42);
+      expect(d.mean).toBeLessThan(58);
+      // Bucket counts sum to the number of flips.
+      expect(d.buckets.reduce((a, b) => a + b, 0)).toBe(d.percents.length);
+    }
+  });
+
+  it('returns an empty, well-formed result for an empty message', () => {
+    const d = avalancheDistribution('', 'sha256');
+    expect(d.percents).toHaveLength(0);
+    expect(d.mean).toBe(0);
+  });
+});
+
+describe('oneLineHash', () => {
+  it('matches the real SHA-256 digest and exposes a shortened form', () => {
+    const { full, short } = oneLineHash('hello');
+    expect(full).toBe(bytesToHex(sha256(enc.encode('hello'))));
+    expect(short.startsWith(full.slice(0, 12))).toBe(true);
   });
 });
 

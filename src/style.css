@@ -241,7 +241,156 @@ th[scope='row'] {
 .byte {
   padding: 0.12rem 0.2rem;
   border-radius: 4px;
-  background-color: rgba(21, 94, 117, 0.12);
+  background-color: var(--surface-soft);
+  border: 1px solid var(--border);
+}
+
+/* --- Intro "what is a hash?" block --- */
+.intro-lead {
+  color: var(--text);
+  margin-bottom: 0.5rem;
+}
+
+.intro-rules {
+  margin: 0.3rem 0 0.9rem;
+  color: var(--text);
+  line-height: 1.55;
+}
+
+.intro-rules li {
+  margin-bottom: 0.2rem;
+}
+
+.intro-live {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.85rem;
+  background-color: var(--surface-soft);
+}
+
+.intro-live label {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+  margin-bottom: 0.35rem;
+}
+
+#intro-input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text);
+  padding: 0.6rem 0.7rem;
+}
+
+.intro-output {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.4rem;
+  font-family: var(--font-mono);
+}
+
+.intro-arrow {
+  color: var(--muted);
+  font-weight: 600;
+}
+
+#intro-hash {
+  color: var(--primary-strong);
+  word-break: break-all;
+}
+
+.intro-hint,
+.section-lead {
+  margin-top: 0.6rem;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+
+.section-lead {
+  margin-bottom: 0.4rem;
+}
+
+.th-note,
+.td-note {
+  display: block;
+  font-weight: 400;
+  color: var(--muted);
+  font-size: 0.78rem;
+}
+
+/* --- Inline jargon term with hover/focus definition --- */
+.term {
+  position: relative;
+  border-bottom: 1px dotted var(--primary-strong);
+  cursor: help;
+}
+
+.term .term-def {
+  position: absolute;
+  left: 0;
+  bottom: 125%;
+  z-index: 20;
+  width: max-content;
+  max-width: 260px;
+  padding: 0.5rem 0.65rem;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 140ms ease;
+}
+
+.term:hover .term-def,
+.term:focus-within .term-def {
+  opacity: 1;
+  visibility: visible;
+}
+
+/* Show definition inline on touch / no-hover devices instead of a tooltip. */
+@media (hover: none) {
+  .term .term-def {
+    position: static;
+    display: inline;
+    opacity: 1;
+    visibility: visible;
+    width: auto;
+    max-width: none;
+    box-shadow: none;
+    border: none;
+    padding: 0 0.2rem;
+    color: var(--muted);
+    background: transparent;
+  }
+  .term .term-def::before { content: '('; }
+  .term .term-def::after { content: ')'; }
+}
+
+.advanced {
+  margin-top: 0.6rem;
+}
+
+.advanced summary {
+  cursor: pointer;
+  color: var(--primary-strong);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.advanced p {
+  margin-top: 0.5rem;
+  color: var(--text);
+  font-size: 0.92rem;
+  line-height: 1.5;
 }
 
 .copy-btn {
@@ -432,6 +581,325 @@ th[scope='row'] {
 
 .bit-cell.same {
   background-color: var(--bit-same);
+}
+
+/* --- Timing footnote (demoted behind a toggle) --- */
+.timing-details {
+  margin-top: 0.7rem;
+}
+
+.timing-details summary {
+  cursor: pointer;
+  color: var(--primary-strong);
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.timing-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.6rem;
+  margin-top: 0.6rem;
+}
+
+.timing-cell {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.4rem 0.7rem;
+  background-color: var(--surface-soft);
+  display: flex;
+  flex-direction: column;
+  min-width: 8rem;
+}
+
+.timing-algo {
+  font-size: 0.78rem;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.timing-num {
+  font-family: var(--font-mono);
+  color: var(--text);
+}
+
+/* --- Cause -> effect: input bit strip --- */
+.cause-effect {
+  margin-top: 0.8rem;
+}
+
+.cause-panel {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.7rem;
+  background-color: var(--surface-soft);
+}
+
+.mini-head {
+  font-size: 0.95rem;
+  color: var(--text);
+  margin: 0;
+}
+
+.effect-head {
+  margin-top: 1rem;
+}
+
+.mini-note {
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+
+.input-strip {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 2px;
+  font-family: var(--font-mono);
+  max-height: 8.5rem;
+  overflow-y: auto;
+}
+
+.ibit {
+  width: 1.15rem;
+  height: 1.15rem;
+  display: grid;
+  place-items: center;
+  border-radius: 3px;
+  font-size: 0.72rem;
+  border: 1px solid var(--border);
+  color: var(--text);
+  background-color: var(--surface);
+}
+
+.ibit-1 {
+  background-color: var(--surface-soft);
+  font-weight: 700;
+}
+
+.ibit-flip {
+  background-color: var(--bit-changed);
+  background-image: repeating-linear-gradient(
+    45deg, transparent, transparent 2px, rgba(0, 0, 0, 0.32) 2px, rgba(0, 0, 0, 0.32) 4px
+  );
+  color: #fff;
+  border-color: var(--bit-changed);
+  outline: 2px solid var(--text);
+  outline-offset: 1px;
+  font-weight: 700;
+}
+
+.ibit-more {
+  color: var(--muted);
+  align-self: center;
+  padding-left: 0.3rem;
+}
+
+/* --- Per-byte avalanche heatmap --- */
+.heatmap-caption {
+  margin-top: 0.6rem;
+  color: var(--muted);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.byte-heatmap {
+  margin-top: 0.35rem;
+  display: grid;
+  grid-template-columns: repeat(16, 1fr);
+  gap: 2px;
+}
+
+.heat-cell {
+  height: 14px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+}
+
+/* 0..8 bits changed -> pale to full accent. Uses a fixed accent so the scale
+   reads the same regardless of theme, with borders for the low end so 0/8 is
+   still distinguishable in high-contrast mode. */
+.heat-0 { background-color: transparent; }
+.heat-1 { background-color: color-mix(in srgb, var(--primary) 12%, var(--surface)); }
+.heat-2 { background-color: color-mix(in srgb, var(--primary) 25%, var(--surface)); }
+.heat-3 { background-color: color-mix(in srgb, var(--primary) 40%, var(--surface)); }
+.heat-4 { background-color: color-mix(in srgb, var(--primary) 55%, var(--surface)); }
+.heat-5 { background-color: color-mix(in srgb, var(--primary) 68%, var(--surface)); }
+.heat-6 { background-color: color-mix(in srgb, var(--primary) 80%, var(--surface)); }
+.heat-7 { background-color: color-mix(in srgb, var(--primary) 90%, var(--surface)); }
+.heat-8 { background-color: var(--primary); }
+
+/* --- Distribution histogram --- */
+.dist-block {
+  margin-top: 1.1rem;
+  border-top: 1px solid var(--border);
+  padding-top: 0.9rem;
+}
+
+.dist-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.6rem;
+}
+
+.dist-controls label {
+  color: var(--text);
+  font-weight: 600;
+}
+
+#dist-algo {
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background-color: var(--surface-soft);
+  color: var(--text);
+  padding: 0.45rem 0.6rem;
+  min-height: 2.75rem;
+}
+
+.dist-result {
+  margin-top: 0.8rem;
+}
+
+.dist-summary {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-bottom: 0.5rem;
+}
+
+.dist-summary strong {
+  color: var(--text);
+}
+
+.hist {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 140px;
+  border-bottom: 2px solid var(--border);
+  padding: 0 2px;
+}
+
+.hist-bar {
+  flex: 1;
+  min-height: 1px;
+  background-color: var(--muted);
+  border-radius: 3px 3px 0 0;
+}
+
+.hist-bar.hist-mid {
+  background-color: var(--primary);
+}
+
+.hist-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 0.3rem;
+  color: var(--muted);
+  font-size: 0.78rem;
+  font-family: var(--font-mono);
+}
+
+/* --- Length-extension forgery demo --- */
+.lext-demo {
+  margin-top: 1.1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0.9rem;
+  background-color: var(--surface-soft);
+}
+
+.lext-demo h3 {
+  color: var(--text);
+}
+
+.lext-controls {
+  margin-top: 0.7rem;
+  display: grid;
+  gap: 0.6rem;
+}
+
+.lext-field label {
+  display: block;
+  font-weight: 600;
+  color: var(--text);
+  font-size: 0.9rem;
+  margin-bottom: 0.25rem;
+}
+
+.lext-field input {
+  width: 100%;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  background-color: var(--surface);
+  color: var(--text);
+  padding: 0.55rem 0.65rem;
+  font-family: var(--font-mono);
+}
+
+.lext-result {
+  margin-top: 0.8rem;
+}
+
+.lext-facts {
+  margin: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.lext-facts dt {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 0.88rem;
+}
+
+.lext-facts dd {
+  margin: 0.15rem 0 0;
+  color: var(--text);
+}
+
+.lext-facts code {
+  font-family: var(--font-mono);
+  font-size: 0.82rem;
+  word-break: break-all;
+  color: var(--text);
+}
+
+.lext-forged {
+  color: var(--danger);
+  font-weight: 700;
+}
+
+.lext-meta {
+  color: var(--muted);
+  font-size: 0.82rem;
+}
+
+.lext-verdict {
+  margin-top: 0.7rem;
+  font-weight: 600;
+}
+
+.lext-ok {
+  color: var(--success);
+}
+
+.lext-bad {
+  color: var(--danger);
+}
+
+.lext-defense {
+  margin-top: 0.9rem;
+}
+
+.lext-demo code,
+.mini-note code,
+.section-lead code {
+  font-family: var(--font-mono);
 }
 
 .diagram-row {

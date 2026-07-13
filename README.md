@@ -2,7 +2,17 @@
 
 ## What It Is
 
-Hash Zoo is an interactive side-by-side comparison of three cryptographic hash functions: SHA-256 (Merkle-Damgård construction via `@noble/hashes/sha2`), SHA3-256 (Keccak sponge construction via `@noble/hashes/sha3`), and BLAKE3 (binary tree hash via `@noble/hashes/blake3`). It computes 256-bit digests, measures timing across 100 iterations, and visualizes the avalanche effect — how flipping a single input bit changes roughly half the output bits. The demo also shows SHA-256 Merkle-Damgård padding and SHA-3 rate/capacity parameters to illustrate the structural differences between constructions.
+Hash Zoo is an interactive side-by-side comparison of three cryptographic hash functions: SHA-256 (Merkle-Damgård construction via `@noble/hashes/sha2`), SHA3-256 (Keccak sponge construction via `@noble/hashes/sha3`), and BLAKE3 (binary tree hash via `@noble/hashes/blake3`). It opens with a plain-language "what is a hash?" on-ramp, then computes 256-bit digests, visualizes the avalanche effect — how flipping a single input bit changes roughly half the output bits — showing the flipped input bit next to the output storm, and demonstrates the flagship structural difference between constructions by performing a **real, live SHA-256 length-extension forgery** in the browser. Timing across 100 iterations and SHA-256 padding / SHA-3 rate–capacity details are available as secondary, honestly-caveated views.
+
+Every digest, forged tag, and avalanche count is computed in-browser from the real `@noble/hashes` primitives — no hardcoded or faked output. The length-extension forgery is proven at runtime by recomputing SHA-256 over the reconstructed message from scratch and asserting equality.
+
+## Exhibits
+
+1. **Start here — What is a hash?** A one-input / one-output live example with the three defining rules (deterministic, fixed-size, one-way/unpredictable). Defines a hash before comparing hashes.
+2. **Section A — Hash Comparison.** SHA-256, SHA3-256, and BLAKE3 side-by-side: 256-bit digests, output size, internal state, and construction, with plain-language annotations. Indicative timing is tucked behind a "show timing" toggle (see the caveat below).
+3. **Section B — Avalanche Effect.** Flip one input bit (shown highlighted in an input-bit strip) and watch ~50% of the 256 output bits flip. A per-byte heatmap encodes how many bits changed in each output byte (uniform diffusion), and a "flip every bit" sweep plots the distribution of output-diff percentages, showing ~50% is a statistical law, not one lucky result.
+4. **Section C — Construction Comparison + length extension.** Merkle-Damgård, sponge, and tree diagrams, plus an interactive length-extension forgery: from a published SHA-256 tag and its length alone (never the secret bytes), append attacker data and produce a valid extended tag — then see it verified against a from-scratch recompute. Contrasts with the sponge's withheld capacity lane.
+5. **Info Panel.** Tabbed construction notes with inline jargon glossaries (IV, chaining value, rate/capacity, sponge, XOF, SIMD) and "Advanced" disclosures gating Davies-Meyer and Keccak-f[1600], plus guidance on choosing a hash function.
 
 ## When to Use It
 
@@ -17,7 +27,7 @@ Hash Zoo is an interactive side-by-side comparison of three cryptographic hash f
 
 **[systemslibrarian.github.io/crypto-lab-hash-zoo](https://systemslibrarian.github.io/crypto-lab-hash-zoo/)**
 
-Type or paste any message into the textarea and click "Hash All Three" to see hex output, average timing, and construction metadata for all three algorithms. Use the bit-position slider in Section B to flip a single bit and watch the 16×16 avalanche grid animate which output bits changed. Click "Padding info" to inspect the SHA-256 padded block and SHA-3 rate/capacity split.
+Start with the "what is a hash?" box and type to watch a live fingerprint. Type or paste any message into the Section A textarea and click "Hash All Three" to see hex output and construction metadata for all three algorithms (timing lives behind the "show indicative timing" toggle). Use the bit-position slider in Section B to flip a single bit — the flipped input bit is highlighted in an input strip beside the 16×16 avalanche grid — then run the "flip every bit" sweep to see the ~50% distribution. In Section C, run the length-extension forgery to watch a valid extended SHA-256 tag appear from a published tag alone. Click "Padding info" to inspect the SHA-256 padded block and SHA-3 rate/capacity split.
 
 ## About the Timings (read before comparing speeds)
 
@@ -61,7 +71,8 @@ npm run test:a11y   # Playwright + axe-core accessibility gate
 
 - **Known-answer vectors.** SHA-256, SHA3-256, and BLAKE3 digests of `""` and `"abc"` are checked against the published standard vectors (FIPS 180-4, FIPS 202, BLAKE3 reference). Swapping a source import (for example `sha3` → `sha256`) fails these tests immediately.
 - **Distinctness.** The three algorithms produce different digests for the same input.
-- **Avalanche ~50%.** Averaged over many single-bit input flips, each algorithm changes close to half of the 256 output bits (asserted within 42–58%).
+- **Avalanche ~50%.** Averaged over many single-bit input flips, each algorithm changes close to half of the 256 output bits (asserted within 42–58%). The every-bit distribution sweep is asserted the same way, with bucket counts summing to the number of flips.
+- **Length-extension forgery is real.** `lengthExtend` resumes SHA-256 from a published digest, appends attacker data, and the test asserts the forged tag equals `SHA-256(secret ‖ glue ‖ append)` recomputed from scratch — for several secrets and an empty append — so the demo cannot ship a faked forgery. `sha256GluePadding` is checked for the `0x80` marker, block alignment, and big-endian length tail.
 - **Pure-function correctness.** `popcount` over all 256 byte values, `flipBit` (exactly one bit changed, input not mutated, MSB-first, range/empty guards), `diffBitmap` (bit locations and counts), and `paddingInfo` (SHA-256 Merkle–Damgård `0x80` marker, 512-bit block alignment, big-endian length tail; SHA-3 rate+capacity = 1600).
 
 `npm test` runs only the Vitest unit suite; the Playwright a11y suite in `e2e/` is excluded from it and run separately via `npm run test:a11y`.

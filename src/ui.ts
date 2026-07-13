@@ -1,13 +1,32 @@
-import { describeBitFlip, maxBitPosition } from './avalanche';
-import { avalancheAnalysis, hashAll, paddingInfo, type AvalanchePerAlgorithm, type HashResults } from './hasher';
+import { describeBitFlip, inputBitStrip, maxBitPosition } from './avalanche';
+import {
+  avalancheAnalysis,
+  avalancheDistribution,
+  hashAll,
+  lengthExtend,
+  oneLineHash,
+  paddingInfo,
+  type AvalanchePerAlgorithm,
+  type HashResults,
+} from './hasher';
 
 const defaultMessage = 'The quick brown fox jumps over the lazy dog';
 
+// Uniform, non-decorative byte spans. The previous byte-N (index mod 8)
+// coloring looked meaningful but wasn't, inviting learners to hunt for a
+// pattern that didn't exist; per-byte color now only appears in the avalanche
+// heatmap where it actually encodes how many bits changed.
 function renderByteSpans(hex: string): string {
   const chunks = hex.match(/.{1,2}/g) ?? [];
-  return chunks
-    .map((chunk, index) => `<span class="byte byte-${index % 8}">${chunk}</span>`)
-    .join('');
+  return chunks.map((chunk) => `<span class="byte">${chunk}</span>`).join('');
+}
+
+function escapeHtml(value: string): string {
+  return value
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
 }
 
 function formatMicros(ms: number): string {
@@ -32,36 +51,56 @@ function makeHashRows(results: HashResults): string {
       </td>
     </tr>
     <tr>
-      <th scope="row">Time (avg µs)</th>
-      <td data-label="SHA-256">${formatMicros(results.sha256.timeMs)}</td>
-      <td data-label="SHA3-256">${formatMicros(results.sha3.timeMs)}</td>
-      <td data-label="BLAKE3">${formatMicros(results.blake3.timeMs)}</td>
-    </tr>
-    <tr>
       <th scope="row">Output size</th>
       <td data-label="SHA-256">256 bits</td>
       <td data-label="SHA3-256">256 bits</td>
       <td data-label="BLAKE3">256 bits</td>
     </tr>
     <tr>
-      <th scope="row">Internal state size</th>
-      <td data-label="SHA-256">256-bit chaining value</td>
-      <td data-label="SHA3-256">1600-bit state (1088|512)</td>
-      <td data-label="BLAKE3">256-bit chaining value per node</td>
+      <th scope="row">Internal state <span class="th-note">(running memory between blocks)</span></th>
+      <td data-label="SHA-256">256-bit chaining value <span class="td-note">(all of it is published as the digest)</span></td>
+      <td data-label="SHA3-256">1600-bit state, split 1088 rate | 512 capacity <span class="td-note">(the 512 stays hidden)</span></td>
+      <td data-label="BLAKE3">256-bit chaining value per tree node</td>
     </tr>
     <tr>
-      <th scope="row">Construction</th>
-      <td data-label="SHA-256">Merkle-Damgaard</td>
-      <td data-label="SHA3-256">Sponge (Keccak-f[1600])</td>
-      <td data-label="BLAKE3">Binary tree hash</td>
+      <th scope="row">Construction <span class="th-note">(how blocks are combined)</span></th>
+      <td data-label="SHA-256">Merkle-Damgard <span class="td-note">(one block after another)</span></td>
+      <td data-label="SHA3-256">Sponge <span class="td-note">(absorb then squeeze)</span></td>
+      <td data-label="BLAKE3">Binary tree <span class="td-note">(leaves combined in parallel)</span></td>
     </tr>
   `;
+}
+
+function makeTimingHtml(results: HashResults): string {
+  return `
+    <div class="timing-grid">
+      <div class="timing-cell"><span class="timing-algo">SHA-256</span><span class="timing-num">${formatMicros(results.sha256.timeMs)}</span></div>
+      <div class="timing-cell"><span class="timing-algo">SHA3-256</span><span class="timing-num">${formatMicros(results.sha3.timeMs)}</span></div>
+      <div class="timing-cell"><span class="timing-algo">BLAKE3</span><span class="timing-num">${formatMicros(results.blake3.timeMs)}</span></div>
+    </div>
+  `;
+}
+
+// Heatmap: for each of the 32 output bytes, count how many of its 8 bits
+// changed (0..8) so the color carries information (uniform diffusion) instead
+// of the old decorative index-mod-8 tint.
+function perByteChanges(changedBitMap: boolean[]): number[] {
+  const counts: number[] = [];
+  for (let byteIndex = 0; byteIndex < 32; byteIndex += 1) {
+    let n = 0;
+    for (let bit = 0; bit < 8; bit += 1) {
+      if (changedBitMap[byteIndex * 8 + bit]) n += 1;
+    }
+    counts.push(n);
+  }
+  return counts;
 }
 
 function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
   const pct = data.diffPercent;
   const delta = Math.abs(pct - 50);
   const quality = delta <= 6 ? 'ideal' : delta <= 12 ? 'good' : 'off';
+  const heat = perByteChanges(data.changedBitMap);
   return `
     <div class="algo-card">
       <h3>${id.toUpperCase()}</h3>
@@ -75,6 +114,15 @@ function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
           .map(
             (changed, index) =>
               `<div class="bit-cell ${changed ? 'changed' : 'same'}" style="transition-delay:${index * 2}ms" title="Bit ${index + 1}: ${changed ? 'changed' : 'same'}"></div>`,
+          )
+          .join('')}
+      </div>
+      <p class="heatmap-caption">Per-byte heatmap — how many of each output byte's 8 bits changed. Even, near-4/8 shading everywhere is the goal (uniform diffusion).</p>
+      <div class="byte-heatmap" role="img" aria-label="${id}: per-byte change heatmap. Each of 32 output bytes changed between ${Math.min(...heat)} and ${Math.max(...heat)} of its 8 bits.">
+        ${heat
+          .map(
+            (n, index) =>
+              `<div class="heat-cell heat-${n}" title="Byte ${index + 1}: ${n}/8 bits changed"></div>`,
           )
           .join('')}
       </div>
@@ -100,8 +148,28 @@ function buildAppHtml(): string {
       </aside>
     </header>
 
+    <section class="panel" id="hash-intro">
+      <h2>Start here - What is a hash?</h2>
+      <p class="intro-lead">A <strong>hash function</strong> takes any input and boils it down to a short, fixed-size fingerprint. Three plain rules define a good one:</p>
+      <ul class="intro-rules">
+        <li><strong>Deterministic</strong> — the same input always gives the same fingerprint.</li>
+        <li><strong>Fixed-size</strong> — a tweet or a movie both come out as the same 256-bit tag.</li>
+        <li><strong>One-way &amp; unpredictable</strong> — you can't run it backwards to the input, and changing anything scrambles the whole output.</li>
+      </ul>
+      <div class="intro-live">
+        <label for="intro-input">Try it — type anything:</label>
+        <input id="intro-input" type="text" value="hello" autocomplete="off" spellcheck="false" />
+        <p class="intro-output" aria-live="polite">
+          <span class="intro-arrow" aria-hidden="true">SHA-256 →</span>
+          <code id="intro-hash"></code>
+        </p>
+        <p class="intro-hint">Edit one letter and watch the whole fingerprint change. That total scramble from a tiny edit is the <em>avalanche effect</em>, explored in Section B. This page then compares three different ways of building that fingerprint.</p>
+      </div>
+    </section>
+
     <section class="panel" id="hash-comparison">
       <h2>Section A - Hash Comparison</h2>
+      <p class="section-lead">Now the three-way comparison. Each column is a real hash function computing a 256-bit digest of your message in your browser. They look like the same kind of random noise, yet they are built completely differently (Sections C and the info panel unpack how).</p>
       <label for="message-input">Message</label>
       <textarea id="message-input" rows="4">${defaultMessage}</textarea>
       <div class="button-row">
@@ -123,11 +191,16 @@ function buildAppHtml(): string {
         </table>
       </div>
       <p class="consistency">Same input -> same output.</p>
-      <p class="timing-note">Timings are an in-browser average over 100 iterations, reported in microseconds. They are indicative only: JIT warmup, garbage collection, CPU throttling, and other tabs make single-digit-microsecond numbers noisy, so treat them as a rough feel for relative cost rather than a benchmark. For real comparisons, measure a native build (for example <code>b3sum</code> vs <code>openssl</code>) on large inputs.</p>
+      <details class="timing-details">
+        <summary>Show indicative timing (not a benchmark)</summary>
+        <div id="timing-grid-host"></div>
+        <p class="timing-note">In-browser average over 100 iterations, in microseconds. Indicative only: JIT warmup, garbage collection, CPU throttling, and other tabs make single-digit-microsecond numbers noisy, so treat them as a rough feel for relative cost rather than a benchmark. For real comparisons, measure a native build (for example <code>b3sum</code> vs <code>openssl</code>) on large inputs.</p>
+      </details>
     </section>
 
     <section class="panel" id="avalanche-section">
       <h2>Section B - Avalanche Effect</h2>
+      <p class="section-lead">The headline property: flip <strong>one</strong> input bit and about <strong>half</strong> of the 256 output bits flip — unpredictably. Watch the cause (one input bit, left) and the effect (the output storm, right) in the same view.</p>
       <p id="message-preview"></p>
       <div class="slider-row">
         <label for="bit-slider">Bit position to flip</label>
@@ -135,20 +208,46 @@ function buildAppHtml(): string {
       </div>
       <input id="bit-slider" type="range" min="0" value="0" step="1" aria-describedby="bit-label" />
       <p id="bit-label"></p>
+
+      <div class="cause-effect">
+        <div class="cause-panel">
+          <h3 class="mini-head">Cause: input bits</h3>
+          <p class="mini-note">One bit is flipped (highlighted). Everything else is untouched.</p>
+          <div id="input-strip" class="input-strip" role="img" tabindex="0" aria-label="Input bit strip"></div>
+        </div>
+      </div>
+
       <button id="analyze-btn" type="button">Analyze Avalanche</button>
       <ul class="legend" aria-label="Avalanche grid legend">
         <li><span class="legend-swatch swatch-changed" aria-hidden="true"></span> Changed bit (striped)</li>
         <li><span class="legend-swatch swatch-same" aria-hidden="true"></span> Unchanged bit (solid)</li>
         <li><span class="legend-swatch swatch-ideal" aria-hidden="true"></span> Meter mark = ideal 50%</li>
       </ul>
+      <p class="mini-head effect-head">Effect: output bits (~50% flip)</p>
       <div id="avalanche-grids" class="avalanche-wrap">
         <p class="empty-state">Scroll here or press <strong>Analyze Avalanche</strong> to compute the bit-change grids.</p>
       </div>
       <p class="ideal-note">A strong hash flips roughly 50% of output bits when a single input bit changes. Each card's meter shows how close it lands to that ideal.</p>
+
+      <div class="dist-block">
+        <h3 class="mini-head">Is ~50% just luck? Flip every bit and see.</h3>
+        <p class="mini-note">One flip landing near 50% could be coincidence. This flips <em>every</em> input bit in turn and plots the distribution of output-diff percentages. A strong hash clusters them tightly around 50% — that tight cluster is the security-relevant law, not any single result.</p>
+        <div class="dist-controls">
+          <label for="dist-algo">Algorithm</label>
+          <select id="dist-algo">
+            <option value="sha256">SHA-256</option>
+            <option value="sha3">SHA3-256</option>
+            <option value="blake3">BLAKE3</option>
+          </select>
+          <button id="dist-btn" type="button">Run every-bit sweep</button>
+        </div>
+        <div id="dist-result" class="dist-result"></div>
+      </div>
     </section>
 
     <section class="panel" id="construction-section">
       <h2>Section C - Construction Comparison</h2>
+      <p class="section-lead">Same 256-bit output, three different internal machines. The single most consequential difference: what the final digest reveals about the hash's <em>internal state</em>. Merkle-Damgard publishes its whole state as the digest — so an attacker can resume from it. The sponge withholds a secret <span class="term">capacity <span class="term-def">(the part of the state never exposed in the output)</span></span> lane, so they can't.</p>
       <div class="diagram-row">
         <article class="diagram-card">
           <h3>SHA-256 (Merkle-Damgaard)</h3>
@@ -203,6 +302,24 @@ function buildAppHtml(): string {
           <p>Parallelizable, SIMD-friendly, fastest of the three.</p>
         </article>
       </div>
+
+      <div class="lext-demo">
+        <h3>Watch length extension actually forge a hash (SHA-256)</h3>
+        <p class="mini-note">This is the flagship claim made concrete. Imagine a server that authenticates a message with <code>tag = SHA-256(secret ‖ message)</code> and publishes <code>tag</code>. You (the attacker) never learn <code>secret</code> — only its byte length and <code>tag</code>. Because bare Merkle-Damgard <em>is</em> its internal state, you can resume from <code>tag</code>, append your own bytes, and produce a tag that validates. Every hash below is computed live in your browser; the forgery is proven by recomputing SHA-256 over the reconstructed message from scratch.</p>
+        <div class="lext-controls">
+          <div class="lext-field">
+            <label for="lext-secret">Secret (you would NOT see this — used only to build the proof)</label>
+            <input id="lext-secret" type="text" value="secret-key||user=alice&role=guest" autocomplete="off" spellcheck="false" />
+          </div>
+          <div class="lext-field">
+            <label for="lext-append">Data you append (attacker-controlled)</label>
+            <input id="lext-append" type="text" value="&role=admin" autocomplete="off" spellcheck="false" />
+          </div>
+          <button id="lext-btn" type="button">Forge extended hash</button>
+        </div>
+        <div id="lext-result" class="lext-result" aria-live="polite"></div>
+        <p class="mini-note lext-defense"><strong>The fix:</strong> don't use bare <code>SHA-256(secret ‖ message)</code> as a MAC. Use <span class="term">HMAC <span class="term-def">(keyed hash that mixes the secret on an inner and an outer pass, so the published tag is not a resumable internal state)</span></span>, or a sponge/tree hash (SHA-3, BLAKE3) whose digest withholds internal state. The sponge diagram above shows the withheld capacity lane that makes this same attack impossible.</p>
+      </div>
     </section>
 
     <section class="panel" id="info-panel">
@@ -214,13 +331,25 @@ function buildAppHtml(): string {
         <button class="tab" role="tab" aria-selected="false" aria-controls="panel-choose" id="tab-choose" data-tab="choose">Choosing a Hash Function</button>
       </div>
       <div class="tab-panel is-active" role="tabpanel" id="panel-md" aria-labelledby="tab-md" data-panel="md">
-        <p>SHA-256 uses a Davies-Meyer style compression approach over 64 rounds and fixed IV constants derived from square roots of primes. Bare Merkle-Damgaard hashes are length-extension vulnerable, while HMAC-SHA256 remains safe because the key is mixed on both inner and outer passes.</p>
+        <p>SHA-256 processes the padded message one 512-bit block at a time. Each block updates a running <span class="term">chaining value <span class="term-def">(the state carried from block to block)</span></span> that starts from a fixed <span class="term">IV <span class="term-def">(initialization vector — a constant starting value)</span></span>. The final chaining value <em>is</em> the digest, which is exactly why bare Merkle-Damgard leaks enough state for a length-extension attack. HMAC-SHA256 stays safe because the secret key is mixed on both an inner and an outer pass, so the tag is not a resumable state.</p>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <p>The block compression uses a <span class="term">Davies-Meyer <span class="term-def">(build a compression function from a block cipher, feeding the previous state back in)</span></span> construction over 64 rounds, with IV and round constants taken from the fractional parts of square roots and cube roots of the first primes.</p>
+        </details>
       </div>
       <div class="tab-panel" role="tabpanel" id="panel-sponge" aria-labelledby="tab-sponge" data-panel="sponge">
-        <p>SHA3-256 is built from Keccak-f[1600], alternating absorb and squeeze phases with rate/capacity partitioning. Its sponge structure was standardized to provide a distinct design line from SHA-2 and is resistant to length extension by construction.</p>
+        <p>SHA3-256 is a <span class="term">sponge <span class="term-def">(absorb input, then squeeze output, mixing a large fixed state)</span></span>. Its state is split into a <span class="term">rate <span class="term-def">(the part input touches and output comes from)</span></span> of 1088 bits and a <span class="term">capacity <span class="term-def">(a hidden reserve never exposed in the output)</span></span> of 512 bits. Because the capacity is withheld, an attacker cannot reconstruct the internal state from the digest, so the sponge resists length extension by design.</p>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <p>The permutation is <span class="term">Keccak-f[1600] <span class="term-def">(the 1600-bit fixed permutation applied each round)</span></span>. Rate + capacity always sum to the 1600-bit state width; the capacity size sets the security level.</p>
+        </details>
       </div>
       <div class="tab-panel" role="tabpanel" id="panel-tree" aria-labelledby="tab-tree" data-panel="tree">
-        <p>BLAKE3 uses a Bao-compatible binary tree over 1024-byte chunks with parent-node chaining values. Tree hashing makes parallel processing natural, maps well to SIMD, and supports XOF/KDF style key derivation modes.</p>
+        <p>BLAKE3 splits the message into 1024-byte leaf chunks, hashes each independently, then combines pairs of <span class="term">chaining values <span class="term-def">(each node's running state)</span></span> up a binary tree to a single root. Because leaves are independent, they hash in parallel across CPU cores.</p>
+        <details class="advanced">
+          <summary>Advanced</summary>
+          <p>The tree is Bao-compatible and supports an <span class="term">XOF <span class="term-def">(extendable-output function — squeeze arbitrarily many output bytes)</span></span> plus keyed and key-derivation (KDF) modes, and maps cleanly onto <span class="term">SIMD <span class="term-def">(single-instruction-multiple-data CPU lanes)</span></span>.</p>
+        </details>
       </div>
       <div class="tab-panel" role="tabpanel" id="panel-choose" aria-labelledby="tab-choose" data-panel="choose">
         <ul>
@@ -331,6 +460,78 @@ async function copyHash(event: Event): Promise<void> {
   }, 900);
 }
 
+function renderInputStrip(host: HTMLElement, message: string, bitPosition: number): void {
+  const strip = inputBitStrip(message, bitPosition);
+  if (strip.totalBits === 0) {
+    host.innerHTML = '<p class="empty-state">Add a message above to see its input bits.</p>';
+    host.setAttribute('aria-label', 'Input bit strip: message is empty');
+    return;
+  }
+  const truncated = strip.bits.length < strip.totalBits;
+  host.setAttribute(
+    'aria-label',
+    `Input bit strip: ${strip.totalBits} bits, bit ${bitPosition} flipped (highlighted).` +
+      (truncated ? ' Showing the first bits only.' : ''),
+  );
+  host.innerHTML =
+    strip.bits
+      .map(
+        (b) =>
+          `<span class="ibit ${b.value ? 'ibit-1' : 'ibit-0'}${b.flipped ? ' ibit-flip' : ''}" title="${b.flipped ? 'flipped input bit' : `input bit = ${b.value}`}">${b.value}</span>`,
+      )
+      .join('') +
+    (truncated ? '<span class="ibit-more">…</span>' : '');
+}
+
+function renderDistribution(host: HTMLElement, message: string, algo: 'sha256' | 'sha3' | 'blake3'): void {
+  if (message.length === 0) {
+    host.innerHTML = '<p class="empty-state">Add a message above to run the sweep.</p>';
+    return;
+  }
+  const dist = avalancheDistribution(message, algo);
+  const maxCount = Math.max(1, ...dist.buckets);
+  const bars = dist.buckets
+    .map((count, i) => {
+      const lo = (i * dist.bucketSize).toFixed(0);
+      const hi = ((i + 1) * dist.bucketSize).toFixed(0);
+      const h = Math.round((count / maxCount) * 100);
+      const near50 = i * dist.bucketSize <= 50 && (i + 1) * dist.bucketSize > 50;
+      return `<div class="hist-bar${near50 ? ' hist-mid' : ''}" style="height:${h}%" title="${lo}–${hi}% output diff: ${count} flips"></div>`;
+    })
+    .join('');
+  host.innerHTML = `
+    <p class="dist-summary">${dist.percents.length} single-bit flips · mean <strong>${dist.mean.toFixed(1)}%</strong> · range ${dist.min.toFixed(1)}–${dist.max.toFixed(1)}% · the 50% column is highlighted.</p>
+    <div class="hist" role="img" aria-label="${algo}: distribution of output-diff percent over ${dist.percents.length} single-bit input flips. Mean ${dist.mean.toFixed(1)} percent, range ${dist.min.toFixed(1)} to ${dist.max.toFixed(1)} percent, tightly clustered near 50 percent.">${bars}</div>
+    <div class="hist-axis"><span>0%</span><span>50%</span><span>100%</span></div>
+  `;
+}
+
+function renderLengthExtension(host: HTMLElement, secret: string, append: string): void {
+  if (secret.length === 0) {
+    host.innerHTML = '<p class="empty-state">Enter a non-empty secret to run the forgery.</p>';
+    return;
+  }
+  const r = lengthExtend(secret, append);
+  const verdict = r.verified
+    ? '<span class="lext-ok">✓ VERIFIED — the forged hash equals SHA-256 of the reconstructed message, computed from scratch. A real, valid forgery.</span>'
+    : '<span class="lext-bad">✗ Mismatch (unexpected).</span>';
+  host.innerHTML = `
+    <dl class="lext-facts">
+      <dt>1. Published tag (all you legitimately hold)</dt>
+      <dd><code>${r.originalDigest}</code><br><span class="lext-meta">plus the length: ${r.originalLen} bytes. The secret bytes themselves are never used to build this forgery.</span></dd>
+      <dt>2. Glue padding you can reconstruct from the length alone</dt>
+      <dd><code>${r.gluePaddingHex}</code></dd>
+      <dt>3. Your appended bytes</dt>
+      <dd><code>${escapeHtml(r.appended)}</code></dd>
+      <dt>4. Forged tag (resumed from the published tag, secret never seen)</dt>
+      <dd><code class="lext-forged">${r.forgedHash}</code></dd>
+      <dt>5. Independent check: SHA-256(secret ‖ glue ‖ append) from scratch</dt>
+      <dd><code>${r.verifyHash}</code></dd>
+    </dl>
+    <p class="lext-verdict">${verdict}</p>
+  `;
+}
+
 export function initHashZoo(): void {
   const app = document.querySelector<HTMLDivElement>('#app');
   if (!app) {
@@ -355,6 +556,20 @@ export function initHashZoo(): void {
   const closeModalBtn = app.querySelector<HTMLButtonElement>('#close-modal');
   const paddingContent = app.querySelector<HTMLElement>('#padding-content');
 
+  // New teaching elements (optional — guarded individually so a missing one
+  // never breaks the core comparison/avalanche experience).
+  const introInput = app.querySelector<HTMLInputElement>('#intro-input');
+  const introHash = app.querySelector<HTMLElement>('#intro-hash');
+  const timingHost = app.querySelector<HTMLElement>('#timing-grid-host');
+  const inputStripHost = app.querySelector<HTMLElement>('#input-strip');
+  const distAlgo = app.querySelector<HTMLSelectElement>('#dist-algo');
+  const distBtn = app.querySelector<HTMLButtonElement>('#dist-btn');
+  const distResult = app.querySelector<HTMLElement>('#dist-result');
+  const lextSecret = app.querySelector<HTMLInputElement>('#lext-secret');
+  const lextAppend = app.querySelector<HTMLInputElement>('#lext-append');
+  const lextBtn = app.querySelector<HTMLButtonElement>('#lext-btn');
+  const lextResult = app.querySelector<HTMLElement>('#lext-result');
+
   if (
     !messageInput ||
     !hashBtn ||
@@ -378,6 +593,9 @@ export function initHashZoo(): void {
   const runHash = (options: { announceResult?: boolean } = {}): void => {
     const results = hashAll(messageInput.value);
     resultsBody.innerHTML = makeHashRows(results);
+    if (timingHost) {
+      timingHost.innerHTML = makeTimingHtml(results);
+    }
     if (options.announceResult) {
       announce(
         `Hashed ${messageInput.value.length} characters. ` +
@@ -400,6 +618,9 @@ export function initHashZoo(): void {
     const summary = describeBitFlip(messageInput.value, clamped).summary;
     bitLabel.textContent = summary;
     slider.setAttribute('aria-valuetext', summary);
+    if (inputStripHost) {
+      renderInputStrip(inputStripHost, messageInput.value, clamped);
+    }
   };
 
   let avalancheRendered = false;
@@ -456,6 +677,45 @@ export function initHashZoo(): void {
     runAvalanche();
   });
 
+  // Intro "what is a hash?" live one-liner.
+  if (introInput && introHash) {
+    const paintIntro = (): void => {
+      introHash.textContent = oneLineHash(introInput.value).short;
+      introHash.setAttribute('title', oneLineHash(introInput.value).full);
+    };
+    introInput.addEventListener('input', paintIntro);
+    paintIntro();
+  }
+
+  // Avalanche distribution sweep (flip every input bit).
+  if (distBtn && distAlgo && distResult) {
+    distBtn.addEventListener('click', () => {
+      const algo = distAlgo.value as 'sha256' | 'sha3' | 'blake3';
+      renderDistribution(distResult, messageInput.value, algo);
+      const d = avalancheDistribution(messageInput.value, algo);
+      announce(
+        `Swept ${d.percents.length} single-bit flips for ${algo}. ` +
+          `Mean ${d.mean.toFixed(1)} percent output diff, clustered near 50 percent.`,
+      );
+    });
+  }
+
+  // Length-extension forgery demo.
+  if (lextBtn && lextSecret && lextAppend && lextResult) {
+    const runLext = (): void => {
+      renderLengthExtension(lextResult, lextSecret.value, lextAppend.value);
+    };
+    lextBtn.addEventListener('click', () => {
+      runLext();
+      const r = lengthExtend(lextSecret.value || 'x', lextAppend.value);
+      announce(
+        r.verified
+          ? 'Length extension succeeded: the forged SHA-256 tag validates against the reconstructed message.'
+          : 'Length extension result computed.',
+      );
+    });
+  }
+
   const toggle = themeToggle;
 
   function syncToggle(): void {
@@ -489,6 +749,15 @@ export function initHashZoo(): void {
   syncToggle();
   updateSliderContext();
   runHash();
+
+  // Show the length-extension forgery on load so the flagship proof is visible
+  // without a click; the sweep waits for a click since it is heavier.
+  if (lextResult && lextSecret && lextAppend) {
+    renderLengthExtension(lextResult, lextSecret.value, lextAppend.value);
+  }
+  if (distResult) {
+    distResult.innerHTML = '<p class="empty-state">Press <strong>Run every-bit sweep</strong> to flip every input bit and plot the distribution.</p>';
+  }
 
   // The avalanche grid is below the fold and heavy (3 x 256 animated cells).
   // Render it lazily when it scrolls into view so it stays off the initial
