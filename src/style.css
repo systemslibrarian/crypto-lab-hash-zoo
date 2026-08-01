@@ -283,7 +283,8 @@ th[scope='row'] {
 #intro-input {
   width: 100%;
   border-radius: 10px;
-  border: 1px solid var(--border);
+  /* Text-entry boundary: the fill is nearly identical to its surrounding card. */
+  border: 1px solid var(--border-strong);
   background-color: var(--surface);
   color: var(--text);
   padding: 0.6rem 0.7rem;
