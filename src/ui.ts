@@ -376,7 +376,7 @@ function buildAppHtml(): string {
         <a href="https://systemslibrarian.github.io/crypto-lab-mac-race/" target="_blank" rel="noreferrer">crypto-lab-mac-race</a>
         <a href="https://systemslibrarian.github.io/crypto-lab-kdf-chain/" target="_blank" rel="noreferrer">crypto-lab-kdf-chain</a>
       </nav>
-      <nav>
+      <nav aria-label="More crypto-lab demos">
         <a href="https://systemslibrarian.github.io/crypto-lab/babel-hash/" target="_blank" rel="noreferrer">babel-hash</a>
         <a href="https://systemslibrarian.github.io/crypto-lab/kdf-chain/" target="_blank" rel="noreferrer">kdf-chain</a>
         <a href="https://systemslibrarian.github.io/crypto-lab/corrupted-oracle/" target="_blank" rel="noreferrer">corrupted-oracle</a>
@@ -539,6 +539,13 @@ export function initHashZoo(): void {
   }
 
   app.innerHTML = buildAppHtml();
+
+  // Inline jargon definitions are revealed on :hover/:focus-within. Without a
+  // tab stop the .term span can never receive focus, so keyboard-only users
+  // could not read them (WCAG 2.1.1).
+  app.querySelectorAll<HTMLElement>('.term').forEach((term) => {
+    term.setAttribute('tabindex', '0');
+  });
 
   const messageInput = app.querySelector<HTMLTextAreaElement>('#message-input');
   const hashBtn = app.querySelector<HTMLButtonElement>('#hash-btn');
