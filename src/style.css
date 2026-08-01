@@ -14,6 +14,12 @@
   --text: #2f210f;
   --muted: #73583a;
   --border: #e8cc9d;
+  /* Control boundaries only (textarea, length-extension input, tabs). Those
+     controls are transparent or filled with --surface-soft / --surface, which sit
+     at 1.00-1.10:1 against the card behind them, so the border is the sole
+     boundary and WCAG 2.1 SC 1.4.11 requires 3:1. Buttons are --primary filled
+     and unaffected; --border stays as-is for decorative rules. */
+  --border-strong: #b4802a;
   --primary: #0f766e;
   --primary-strong: #155e75;
   --on-primary: #f8fffe;
@@ -36,6 +42,7 @@ html[data-theme='dark'] {
   --text: #f7e6c9;
   --muted: #c1ab8d;
   --border: #5b4730;
+  --border-strong: #896b48;
   --primary: #2dd4bf;
   --primary-strong: #7dd3fc;
   --on-primary: #07201d;
@@ -153,7 +160,7 @@ textarea {
   width: 100%;
   margin-top: 0.45rem;
   border-radius: 12px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background-color: var(--surface-soft);
   color: var(--text);
   padding: 0.8rem;
@@ -832,7 +839,7 @@ th[scope='row'] {
 .lext-field input {
   width: 100%;
   border-radius: 10px;
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-strong);
   background-color: var(--surface);
   color: var(--text);
   padding: 0.55rem 0.65rem;
@@ -943,7 +950,7 @@ svg text {
 .tab {
   background-color: transparent;
   color: var(--text);
-  border-color: var(--border);
+  border-color: var(--border-strong);
 }
 
 .tab.is-active {
