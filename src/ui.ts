@@ -6,8 +6,10 @@ import {
   lengthExtend,
   oneLineHash,
   paddingInfo,
+  type AvalancheDistribution,
   type AvalanchePerAlgorithm,
   type HashResults,
+  type LengthExtensionResult,
 } from './hasher';
 
 const defaultMessage = 'The quick brown fox jumps over the lazy dog';
@@ -483,10 +485,20 @@ function renderInputStrip(host: HTMLElement, message: string, bitPosition: numbe
     (truncated ? '<span class="ibit-more">…</span>' : '');
 }
 
-function renderDistribution(host: HTMLElement, message: string, algo: 'sha256' | 'sha3' | 'blake3'): void {
+/**
+ * Renders the sweep and returns exactly what it rendered, so the announcement
+ * is derived from the same computation instead of a second, independent one
+ * that can disagree with what is on screen (it used to: an empty message
+ * rendered "add a message" while announcing a mean of 0% "clustered near 50%").
+ */
+function renderDistribution(
+  host: HTMLElement,
+  message: string,
+  algo: 'sha256' | 'sha3' | 'blake3',
+): AvalancheDistribution | null {
   if (message.length === 0) {
     host.innerHTML = '<p class="empty-state">Add a message above to run the sweep.</p>';
-    return;
+    return null;
   }
   const dist = avalancheDistribution(message, algo);
   const maxCount = Math.max(1, ...dist.buckets);
@@ -504,12 +516,23 @@ function renderDistribution(host: HTMLElement, message: string, algo: 'sha256' |
     <div class="hist" role="img" aria-label="${algo}: distribution of output-diff percent over ${dist.percents.length} single-bit input flips. Mean ${dist.mean.toFixed(1)} percent, range ${dist.min.toFixed(1)} to ${dist.max.toFixed(1)} percent, tightly clustered near 50 percent.">${bars}</div>
     <div class="hist-axis"><span>0%</span><span>50%</span><span>100%</span></div>
   `;
+  return dist;
 }
 
-function renderLengthExtension(host: HTMLElement, secret: string, append: string): void {
+/**
+ * Renders the forgery and returns exactly what it rendered (null when nothing
+ * was forged), so the announcement cannot claim a success the panel does not
+ * show — it used to announce "length extension succeeded" for an empty secret,
+ * because the announcement re-ran the attack against a substituted secret.
+ */
+function renderLengthExtension(
+  host: HTMLElement,
+  secret: string,
+  append: string,
+): LengthExtensionResult | null {
   if (secret.length === 0) {
     host.innerHTML = '<p class="empty-state">Enter a non-empty secret to run the forgery.</p>';
-    return;
+    return null;
   }
   const r = lengthExtend(secret, append);
   const verdict = r.verified
@@ -530,6 +553,7 @@ function renderLengthExtension(host: HTMLElement, secret: string, append: string
     </dl>
     <p class="lext-verdict">${verdict}</p>
   `;
+  return r;
 }
 
 export function initHashZoo(): void {
@@ -698,8 +722,11 @@ export function initHashZoo(): void {
   if (distBtn && distAlgo && distResult) {
     distBtn.addEventListener('click', () => {
       const algo = distAlgo.value as 'sha256' | 'sha3' | 'blake3';
-      renderDistribution(distResult, messageInput.value, algo);
-      const d = avalancheDistribution(messageInput.value, algo);
+      const d = renderDistribution(distResult, messageInput.value, algo);
+      if (!d) {
+        announce('Add a message above to run the sweep.');
+        return;
+      }
       announce(
         `Swept ${d.percents.length} single-bit flips for ${algo}. ` +
           `Mean ${d.mean.toFixed(1)} percent output diff, clustered near 50 percent.`,
@@ -709,16 +736,16 @@ export function initHashZoo(): void {
 
   // Length-extension forgery demo.
   if (lextBtn && lextSecret && lextAppend && lextResult) {
-    const runLext = (): void => {
-      renderLengthExtension(lextResult, lextSecret.value, lextAppend.value);
-    };
     lextBtn.addEventListener('click', () => {
-      runLext();
-      const r = lengthExtend(lextSecret.value || 'x', lextAppend.value);
+      const r = renderLengthExtension(lextResult, lextSecret.value, lextAppend.value);
+      if (!r) {
+        announce('Enter a non-empty secret to run the forgery.');
+        return;
+      }
       announce(
         r.verified
           ? 'Length extension succeeded: the forged SHA-256 tag validates against the reconstructed message.'
-          : 'Length extension result computed.',
+          : 'Length extension failed: the forged tag did not match the from-scratch recompute.',
       );
     });
   }

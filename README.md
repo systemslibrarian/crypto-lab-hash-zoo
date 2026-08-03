@@ -64,7 +64,7 @@ The hash wiring is covered by unit tests (Vitest) so a mislabelled or swapped al
 
 ```bash
 npm test        # known-answer vectors + property/round-trip tests
-npm run test:a11y   # Playwright + axe-core accessibility gate
+npm run test:e2e    # Playwright: rendered-claim gate + axe-core accessibility gate
 ```
 
 `src/hasher.test.ts` asserts:
@@ -75,7 +75,30 @@ npm run test:a11y   # Playwright + axe-core accessibility gate
 - **Length-extension forgery is real.** `lengthExtend` resumes SHA-256 from a published digest, appends attacker data, and the test asserts the forged tag equals `SHA-256(secret ‖ glue ‖ append)` recomputed from scratch — for several secrets and an empty append — so the demo cannot ship a faked forgery. `sha256GluePadding` is checked for the `0x80` marker, block alignment, and big-endian length tail.
 - **Pure-function correctness.** `popcount` over all 256 byte values, `flipBit` (exactly one bit changed, input not mutated, MSB-first, range/empty guards), `diffBitmap` (bit locations and counts), and `paddingInfo` (SHA-256 Merkle–Damgård `0x80` marker, 512-bit block alignment, big-endian length tail; SHA-3 rate+capacity = 1600).
 
-`npm test` runs only the Vitest unit suite; the Playwright a11y suite in `e2e/` is excluded from it and run separately via `npm run test:a11y`.
+The unit suite proves the *functions* are right; `e2e/claims.spec.ts` (Playwright, real Chromium
+against the built bundle) proves the *page* is right, so a correct hasher rendered into a wrong
+verdict cannot ship either. It asserts:
+
+- **The digests on screen are the real digests.** SHA-256 and SHA3-256 are checked against Node's
+  OpenSSL bindings — an oracle independent of `@noble` — and BLAKE3 against the published reference
+  vectors, plus determinism, fixed 256-bit output for a 1-character and a 20,000-character message,
+  and that one edited character moves all three.
+- **Every counter is internally consistent.** For each avalanche card the `N/256 bits (P%)` headline
+  must equal the number of `changed` cells actually drawn, the 32 per-byte heatmap values must sum
+  back to `N`, the meter width must be `P`, and the exact `N` is cross-checked against a
+  bit-difference computed in the test. The every-bit sweep's 20 histogram buckets must sum to the
+  number of flips it claims to have run.
+- **The forgery is a real forgery.** The forged tag must equal SHA-256 of `secret ‖ glue ‖ append`
+  recomputed in the test — for the default secret, an empty append, and secret lengths that straddle
+  the 56/64-byte padding boundary — and the glue padding is checked for its `0x80` marker, block
+  alignment and big-endian length tail.
+- **Every failure path reaches its failure state and says why.** Empty message (controls disabled,
+  avalanche and sweep refuse with an explanation), empty secret (forgery refuses), a rejected
+  clipboard write, and attacker-supplied HTML in the append field being escaped rather than executed.
+  Each also asserts the live-region announcement matches what is on screen.
+
+`npm test` runs only the Vitest unit suite; the Playwright suite in `e2e/` is excluded from it and
+run separately via `npm run test:e2e` (`npm run test:a11y` is the same command, kept as an alias).
 
 ## Related Demos
 
