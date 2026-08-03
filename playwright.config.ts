@@ -1,6 +1,6 @@
 import { defineConfig, devices } from '@playwright/test';
 
-const PORT = 4224;
+const PORT = 4647;
 const BASE = '/crypto-lab-hash-zoo/';
 
 export default defineConfig({
