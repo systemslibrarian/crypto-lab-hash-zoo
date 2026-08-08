@@ -26,6 +26,10 @@
   --danger: #c2300f;
   --success: #1f7a37;
   --bit-changed: #d6371a;
+  /* Ink for text sitting ON a --bit-changed chip. Split per theme because the
+     two --bit-changed values sit on opposite sides of white: #d6371a carries
+     white at 4.75:1, but dark's lighter #fb7185 only reaches 3.74:1. */
+  --bit-changed-ink: #fff;
   --bit-same: #2e8b4f;
   --shadow: 0 20px 45px rgba(94, 62, 13, 0.13);
 }
@@ -49,6 +53,7 @@ html[data-theme='dark'] {
   --danger: #f87171;
   --success: #4ade80;
   --bit-changed: #fb7185;
+  --bit-changed-ink: #1f1a14;
   --bit-same: #4ade80;
   --shadow: 0 24px 50px rgba(0, 0, 0, 0.4);
 }
@@ -106,7 +111,9 @@ p {
 .cl-hero{display:flex;align-items:flex-start;justify-content:space-between;gap:clamp(1rem,4vw,3rem);flex-wrap:wrap;margin:clamp(1rem,3vw,2rem) 0 1.5rem;}
 .cl-hero-main{flex:1 1 22rem;min-width:min(100%,20rem);}
 .cl-hero-title{margin:0;font-size:clamp(1.6rem,3.8vw,2.7rem);font-weight:700;line-height:1.1;letter-spacing:.01em;color:var(--text);}
-.cl-hero-sub{margin:.4rem 0 0;font-size:clamp(.9rem,1.6vw,1.05rem);letter-spacing:.01em;opacity:.85;color:var(--muted);}
+/* No `opacity` here: --muted is already the muted step, and fading it a further
+   85% over --bg-accent's warm radial landed the subtitle at 3.67:1. */
+.cl-hero-sub{margin:.4rem 0 0;font-size:clamp(.9rem,1.6vw,1.05rem);letter-spacing:.01em;color:var(--muted);}
 .cl-hero-desc{margin:.55rem 0 0;font-size:1rem;line-height:1.5;color:var(--muted);max-width:60ch;}
 .cl-hero-why{flex:0 1 min(40%,26rem);min-width:min(100%,15rem);border:1px solid color-mix(in srgb, var(--primary) 40%, var(--border));border-radius:10px;padding:.85rem 1.05rem;background:color-mix(in srgb, var(--primary) 8%, var(--surface));}
 .cl-hero-why-label{display:block;font-size:.68rem;font-weight:700;letter-spacing:.14em;color:var(--primary-strong);}
@@ -351,15 +358,17 @@ th[scope='row'] {
   box-shadow: var(--shadow);
   font-size: 0.82rem;
   line-height: 1.4;
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 140ms ease;
+  /* `display: none`, not `visibility: hidden`: a hidden-but-laid-out box still
+     contributes to the document's scroll width, and this 260px tooltip anchored
+     at `left: 0` on a term near the right edge pushed the whole page 23px
+     sideways at every viewport width — WCAG 1.4.10, caused by an element
+     nobody can see. Taking it out of flow costs the 140ms fade. */
+  display: none;
 }
 
 .term:hover .term-def,
 .term:focus-within .term-def {
-  opacity: 1;
-  visibility: visible;
+  display: block;
 }
 
 /* Show definition inline on touch / no-hover devices instead of a tooltip. */
@@ -691,7 +700,7 @@ th[scope='row'] {
   background-image: repeating-linear-gradient(
     45deg, transparent, transparent 2px, rgba(0, 0, 0, 0.32) 2px, rgba(0, 0, 0, 0.32) 4px
   );
-  color: #fff;
+  color: var(--bit-changed-ink);
   border-color: var(--bit-changed);
   outline: 2px solid var(--text);
   outline-offset: 1px;
