@@ -7,12 +7,11 @@ import type { Page } from '@playwright/test';
  * text never reach the `violations` array a gate asserts on:
  *
  *  - text over a background *gradient* — axe declines to compute a ratio and
- *    files the node under `incomplete`. That covers most of this page: `--bg-accent`
- *    lays two radial washes and a linear ramp behind the entire document, so any
- *    text on the bare page background is in the bucket, and the changed-bit chips
- *    add a 45° `repeating-linear-gradient` hatch over their fill. This blind spot
- *    is not hypothetical here — the hero subtitle sat at 3.67:1 and axe reported
- *    nothing, because the radial wash behind it is a gradient.
+ *    files the node under `incomplete`. That covers most of this page:
+ *    `--bg-accent` lays two radial washes and a linear ramp behind the entire
+ *    document, and the changed-bit chips add a 45° `repeating-linear-gradient`
+ *    hatch over their fill. This blind spot is not hypothetical here — the hero
+ *    subtitle sat at 3.67:1 and axe reported nothing.
  *  - text faded by an ancestor's `opacity` — axe reads the declared `color`,
  *    which is not the colour that lands on screen. `#bit-slider:disabled` dims
  *    its subtree, and the hero subtitle used to fade `--muted` to 85%.
@@ -41,13 +40,13 @@ import type { Page } from '@playwright/test';
  *
  *  - TEXT SCROLLED OUT OF A CLIPPING ANCESTOR PAINTS NOTHING. The comparison
  *    table is `min-width: 720px` inside a `.table-wrap` with `overflow-x: auto`,
- *    so at 380px most of its six digest columns are clipped away. Content
- *    scrolled past the client box is not dimmed or partly drawn — it is absent
- *    from the frame, and asking what colour it sits on has no answer. Its rect
- *    is still to the right of every ancestor's box, so the ancestor walk would
- *    find nothing behind it and fall through to white, inventing a failure.
- *    Skip it, and rely on the wider viewport where the very same element is
- *    visible and measured for real.
+ *    so at 380px most of its six digest columns are clipped away.
+ *    Content scrolled past the client box is not dimmed or partly
+ *    drawn — it is absent from the frame, and asking what colour it sits on has
+ *    no answer. Its rect is still to the right of every ancestor's box, so the
+ *    ancestor walk would find nothing behind it and fall through to white,
+ *    inventing a failure. Skip it, and rely on the wider viewport where the very
+ *    same element is visible and measured for real.
  *
  *  - TRANSPARENT TEXT PAINTS NOTHING. Anything drawn `color: transparent` lays
  *    no ink down; compositing a zero-alpha foreground just returns the backdrop
@@ -55,9 +54,9 @@ import type { Page } from '@playwright/test';
  *    never laid down.
  *
  *  - SVG PAINTS IN DOCUMENT ORDER, SO SIBLINGS CAN BE THE BACKGROUND. The three
- *    construction diagrams in the Info Panel are `<svg>`: each draws a stage box
- *    as a `<rect>` and then its label as a following `<text>`, so a label's
- *    backdrop is a PRECEDING SIBLING shape, not an ancestor. An ancestor-only
+ *    construction diagrams in the Info Panel draw each stage box as a `<rect>`
+ *    and then its label as a following `<text>`, so a label's backdrop is a
+ *    PRECEDING SIBLING shape, not an ancestor. An ancestor-only
  *    walk would composite those labels onto the svg's own transparent background
  *    and report a ratio nothing on screen has. So for SVG text, any earlier
  *    sibling shape whose box contains the text box is composited first.
@@ -89,9 +88,9 @@ export async function auditContrast(page: Page): Promise<ContrastFailure[]> {
     /**
      * Resolve ANY CSS colour to straight-alpha sRGB via a 1×1 canvas.
      *
-     * A hand-rolled `rgba()` regex is not enough here: this page authors its
-     * gradients in `oklab()` (the middlebox packets) and mixes accents with
-     * `color-mix(in oklab, …)` (the action buttons), and Chromium reports those
+     * A hand-rolled `rgba()` regex is not enough here: this page mixes accents
+     * into surfaces with `color-mix()` and paints its page background from
+     * radial gradients, and Chromium reports those
      * to `getComputedStyle` unchanged rather than converting them to sRGB. A
      * regex that only understands `rgb()/rgba()` sees `null` for every one of
      * them and the walk then falls through to the wrong backdrop — which
@@ -418,8 +417,14 @@ export async function auditContrast(page: Page): Promise<ContrastFailure[]> {
         sib = sib.previousElementSibling;
       }
       // Earliest sibling first — that is the order the compositor paints in.
+      // Only shapes that actually PAINT A FILL can be a backdrop. SVG's initial
+      // `fill` is black, and `getComputedStyle` reports that for stroke-only
+      // geometry too — so a <line> used as a grid rule or axis reads as an
+      // opaque black rectangle covering whatever it crosses. Compositing that
+      // invented a 3.82:1 failure for labels whose real ratio is 6.15:1.
+      const FILLED = ['rect', 'circle', 'ellipse', 'polygon', 'path'];
       for (const s of stack.reverse()) {
-        if (s.tagName === 'text' || s.tagName === 'title' || s.tagName === 'desc') continue;
+        if (!FILLED.includes(s.tagName.toLowerCase())) continue;
         if (!contains(rectOf(s), box)) continue;
         const scs = styleOf(s);
         const fill = resolve(scs.fill);
@@ -474,9 +479,8 @@ export async function auditContrast(page: Page): Promise<ContrastFailure[]> {
     /**
      * WCAG 1.4.3 exempts text that is part of an *inactive* user-interface
      * component, and axe skips disabled controls for the same reason. Honour
-     * that here so a deliberately dimmed disabled control — `#bit-slider` at
-     * `opacity: 0.5` while no message is entered — is not reported as a failure
-     * the spec does not actually require fixing.
+     * that here so a deliberately dimmed disabled control is not reported as a
+     * failure the spec does not actually require fixing.
      */
     const inactive = (el: Element): boolean => {
       let n: Element | null = el;
@@ -506,6 +510,21 @@ export async function auditContrast(page: Page): Promise<ContrastFailure[]> {
       return false;
     };
 
+    /**
+     * SVG renders character data only inside `<text>` / `<tspan>`. Text sitting
+     * directly in a `<g>`, `<svg>` or shape element is in the DOM but paints
+     * nothing, so it has no colour and no contrast requirement.
+     *
+     * This is not hypothetical: interpolating a string ARRAY into a template
+     * literal (`<g>${dots}</g>`) makes JS join it with commas, leaving a run of
+     * stray "," text nodes inside the group. They are invisible on screen, but
+     * a walk that measures them reports a 1:1 failure against the panel — a
+     * ratio describing ink that was never laid down.
+     */
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const nonRenderingSvgText = (el: Element): boolean =>
+      el.namespaceURI === SVG_NS && !['text', 'tspan'].includes(el.tagName.toLowerCase());
+
     const failures: unknown[] = [];
     for (const el of Array.from(document.querySelectorAll('body *'))) {
       const text = ownText(el);
@@ -513,10 +532,11 @@ export async function auditContrast(page: Page): Promise<ContrastFailure[]> {
       if (!isVisible(el)) continue;
       if (inactive(el)) continue;
       if (ariaHidden(el)) continue;
+      if (nonRenderingSvgText(el)) continue;
 
       const cs = styleOf(el);
-      // SVG text takes its ink from `fill`, not `color`. The construction
-      // diagrams label every stage with `<text>`, and reading `color` there
+      // SVG text takes its ink from `fill`, not `color`. Reading `color` on an
+      // SVG <text>
       // measures an inherited value the glyphs are not painted in.
       const svgText = el.namespaceURI === 'http://www.w3.org/2000/svg';
       const fgRaw = resolve(svgText ? cs.fill : cs.color);
@@ -540,7 +560,7 @@ export async function auditContrast(page: Page): Promise<ContrastFailure[]> {
         y: (textBox.top + textBox.bottom) / 2,
       };
       // For SVG text the first thing beneath the glyphs is a sibling shape, not
-      // an ancestor's background — see the header note on the construction diagrams.
+      // an ancestor's background — see the header note on the SVG figures.
       let fg = fgRaw;
       let bg = svgText ? svgUnderlay(el, textBox) : TRANSPARENT;
       let node: Element | null = el;
