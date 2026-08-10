@@ -396,15 +396,67 @@ test.describe('Section B: avalanche effect', () => {
     await expect(page.locator('#input-strip .ibit')).toHaveCount(24);
   });
 
-  test('a long message truncates the strip and says so', async ({ page }) => {
+  test('a long message truncates the strip and names the window it is showing', async ({ page }) => {
     await setMessage(page, 'x'.repeat(100));
     const strip = page.locator('#input-strip');
     await expect(strip.locator('.ibit')).toHaveCount(512);
+    // Bit 0: nothing elided on the left, so exactly one ellipsis, on the right.
     await expect(strip.locator('.ibit-more')).toHaveCount(1);
     await expect(strip).toHaveAttribute(
       'aria-label',
-      'Input bit strip: 800 bits, bit 0 flipped (highlighted). Showing the first bits only.',
+      'Input bit strip: 800 bits, bit 0 flipped (highlighted). Showing bits 0–511 only.',
     );
+  });
+
+  /**
+   * REGRESSION — the caption's own claim, at every position it can be shown in.
+   *
+   * "One bit is flipped (highlighted)" sits above this strip unconditionally,
+   * and the aria-label names the bit it says is highlighted. The strip used to
+   * render the FIRST 512 bits whatever the slider said, so every position past
+   * bit 511 drew a strip with no highlight at all under both sentences: 288 of
+   * the 800 positions on this 100-byte message, 7488 of 8000 on a 1 kB one.
+   *
+   * The assertion is the invariant between two rendered things — the bit the
+   * label names must be the bit the strip marks — not a string, so it survives
+   * copy edits and covers the whole class.
+   *
+   * The test above ran only bit 0, the single position where showing a fixed
+   * prefix happened to be right.
+   */
+  test('the highlighted bit is the bit the label names, at every window position', async ({
+    page,
+  }) => {
+    await setMessage(page, 'x'.repeat(100));
+    const strip = page.locator('#input-strip');
+    const label = page.locator('.cause-panel .mini-note');
+    await expect(label).toContainText('One bit is flipped (highlighted)');
+
+    for (const bit of [0, 255, 511, 512, 513, 700, 799]) {
+      await page.locator('#bit-slider').fill(String(bit));
+      await expect(page.locator('#bit-value')).toHaveText(`bit ${bit} / 799`);
+
+      // Exactly one cell is marked flipped...
+      const flipped = await strip
+        .locator('.ibit')
+        .evaluateAll((els) =>
+          els.flatMap((el, i) => (el.classList.contains('ibit-flip') ? [i] : [])),
+        );
+      expect(flipped, `bit ${bit}: cells marked flipped`).toHaveLength(1);
+
+      // ...and it is the bit the aria-label names, at its true offset in the
+      // window the aria-label says it is showing.
+      const aria = (await strip.getAttribute('aria-label')) ?? '';
+      const named = Number(/bit (\d+) flipped/.exec(aria)?.[1]);
+      const [from, to] = (/Showing bits (\d+)–(\d+) only/.exec(aria) ?? ['', '0', '511'])
+        .slice(1)
+        .map(Number);
+      expect(named, `bit ${bit}: aria-label names the slider's bit`).toBe(bit);
+      expect(from + flipped[0], `bit ${bit}: window offset`).toBe(named);
+      expect(named).toBeGreaterThanOrEqual(from);
+      expect(named).toBeLessThanOrEqual(to);
+      expect(to - from + 1).toBe(512);
+    }
   });
 
   test('FAILURE PATH: an empty message disables the flip controls and says why', async ({
@@ -446,13 +498,14 @@ test.describe('Section B: every-bit sweep', () => {
       await expect(summary).toBeVisible({ timeout: 60_000 });
       const text = (await summary.textContent()) ?? '';
       const m = text.match(
-        /^(\d+) single-bit flips · mean ([\d.]+)% · range ([\d.]+)–([\d.]+)%/,
+        /^(\d+) single-bit flips · .*? · mean ([\d.]+)% · range ([\d.]+)–([\d.]+)%/,
       );
       expect(m, `unparseable sweep summary: ${text}`).not.toBeNull();
       const [flips, mean, min, max] = m!.slice(1).map(Number);
 
-      // The whole: one flip per input bit.
+      // The whole: one flip per input bit — and the summary says so in words.
       expect(flips).toBe(utf8(message).length * 8);
+      expect(text).toContain(`every one of the message's ${flips} input bits`);
 
       // The parts: 20 histogram buckets whose counts sum back to the flips.
       const bars = page.locator('#dist-result .hist-bar');
@@ -490,17 +543,131 @@ test.describe('Section B: every-bit sweep', () => {
       await expect(page.locator('#dist-result .hist')).toHaveAttribute(
         'aria-label',
         new RegExp(
-          `^${algo}: distribution of output-diff percent over ${flips} single-bit input flips\\. ` +
+          `^${algo}: distribution of output-diff percent over ${flips} single-bit input flips, ` +
+            `every one of the message's ${flips} input bits\\. ` +
             `Mean ${mean.toFixed(1)} percent, range ${min.toFixed(1)} to ${max.toFixed(1)} percent`,
         ),
       );
 
       // And so does the announcement.
       await expect(page.locator('#aria-live-region')).toHaveText(
-        `Swept ${flips} single-bit flips for ${algo}. Mean ${mean.toFixed(1)} percent output diff, clustered near 50 percent.`,
+        `Swept ${flips} single-bit flips for ${algo}, every one of the message's ${flips} input bits. ` +
+          `Mean ${mean.toFixed(1)} percent output diff, clustered near 50 percent.`,
       );
     });
   }
+
+  /**
+   * REGRESSION — "flip every input bit" was false for any message over 512 B.
+   *
+   * The engine caps the sweep at 4096 flips and samples every `step`th bit
+   * above that, but nothing said so: the panel called the result "N single-bit
+   * flips" under a note reading "This flips EVERY input bit in turn", beside a
+   * button labelled "Run every-bit sweep". 513 bytes flips half the message's
+   * bits; 1 kB half; 4 kB an eighth; a 12 kB paste 4.17% of them.
+   *
+   * The existing tests above use a 32-byte message — inside the cap, the one
+   * range where the claim held — so the suite had encoded the assumption.
+   *
+   * The assertion is an invariant between the summary and the arithmetic:
+   * whatever it says it flipped must equal ceil(totalBits / step) using the
+   * total and step IT names, and it must claim "every bit" if and only if
+   * step is 1.
+   */
+  for (const [label, bytes] of [
+    ['at the cap (512 B)', 512],
+    ['one byte past the cap (513 B)', 513],
+    ['a 1 kB paste', 1024],
+  ] as const) {
+    test(`the sweep says which bits it flipped: ${label}`, async ({ page }) => {
+      test.setTimeout(180_000);
+      await setMessage(page, 'z'.repeat(bytes));
+      await page.locator('#dist-btn').click();
+
+      const summary = page.locator('#dist-result .dist-summary');
+      await expect(summary).toBeVisible({ timeout: 120_000 });
+      const text = (await summary.textContent()) ?? '';
+      const flips = Number(/^(\d+) single-bit flips/.exec(text)?.[1]);
+      const totalBits = bytes * 8;
+
+      // The histogram counts what the sentence counts, whichever branch it took.
+      const counts = await page
+        .locator('#dist-result .hist-bar')
+        .evaluateAll((els) =>
+          els.map((el) => Number(/: (\d+) flips$/.exec((el as HTMLElement).title)?.[1] ?? -1)),
+        );
+      expect(counts.reduce((a, b) => a + b, 0)).toBe(flips);
+
+      if (flips === totalBits) {
+        expect(text).toContain(`every one of the message's ${totalBits} input bits`);
+        expect(text).not.toContain('a sample');
+      } else {
+        // It sampled — so it must say so, name the true total, and the stride
+        // it names must be the stride that produces the count it printed.
+        const named = /a sample: every (\d+)(?:st|nd|rd|th) of the message's (\d+) input bits/.exec(
+          text,
+        );
+        expect(named, `sampled sweep did not disclose its sampling: ${text}`).not.toBeNull();
+        const step = Number(named![1]);
+        expect(Number(named![2])).toBe(totalBits);
+        expect(step).toBeGreaterThan(1);
+        expect(flips).toBe(Math.ceil(totalBits / step));
+        expect(flips).toBeLessThan(totalBits);
+        // The chart and the announcement repeat the same disclosure.
+        await expect(page.locator('#dist-result .hist')).toHaveAttribute(
+          'aria-label',
+          new RegExp(`a sample: every ${step}(?:st|nd|rd|th) of the message's ${totalBits} input bits`),
+        );
+        const suffix = { 1: 'st', 2: 'nd', 3: 'rd' }[step % 10] ?? 'th';
+        await expect(page.locator('#aria-live-region')).toContainText(
+          `a sample: every ${step}${suffix} of the message's ${totalBits} input bits`,
+        );
+      }
+    });
+  }
+
+  /**
+   * REGRESSION — the sweep panel was written and never cleared.
+   *
+   * Nothing recomputed or retired it, so editing the message left it asserting
+   * statistics about a message that no longer existed. Clearing the message
+   * entirely put "Add a message above" in the input strip AND in the avalanche
+   * grids while the histogram beside them still reported "344 single-bit flips
+   * ... every one of the message's 344 input bits, mean 49.8%".
+   *
+   * Driven as a transition — run, then change the input — which is the only way
+   * a written-but-never-cleared panel is visible at all.
+   */
+  test('editing the message retires the previous sweep instead of restating it', async ({
+    page,
+  }) => {
+    await setMessage(page, 'sweep me');
+    await page.locator('#dist-btn').click();
+    await expect(page.locator('#dist-result .hist')).toBeVisible();
+    const before = (await page.locator('#dist-result .dist-summary').textContent()) ?? '';
+    expect(before).toContain("every one of the message's 64 input bits");
+
+    // A different message: the old statistics must not survive it.
+    await setMessage(page, 'a completely different message');
+    await expect(page.locator('#dist-result .hist')).toHaveCount(0);
+    await expect(page.locator('#dist-result .dist-summary')).toHaveCount(0);
+    await expect(page.locator('#dist-result')).toContainText('Run every-bit sweep');
+
+    // The strongest form: no message at all. Three panels, one story.
+    await setMessage(page, '');
+    await expect(page.locator('#input-strip')).toContainText('Add a message above');
+    await page.locator('#analyze-btn').click();
+    await expect(page.locator('#avalanche-grids')).toContainText('Add a message above');
+    await expect(page.locator('#dist-result .dist-summary')).toHaveCount(0);
+
+    // Switching algorithm retires it too: the summary does not name the algo,
+    // so a stale chart reads as a chart of the newly selected one.
+    await setMessage(page, 'sweep me');
+    await page.locator('#dist-btn').click();
+    await expect(page.locator('#dist-result .hist')).toBeVisible();
+    await page.locator('#dist-algo').selectOption('blake3');
+    await expect(page.locator('#dist-result .hist')).toHaveCount(0);
+  });
 
   test('FAILURE PATH: sweeping an empty message refuses and says why (screen readers too)', async ({
     page,
@@ -637,6 +804,45 @@ test.describe('Section C: length-extension forgery', () => {
     );
   });
 
+  /**
+   * REGRESSION — the forgery panel was written and never cleared.
+   *
+   * It renders on load and only re-renders on the button, so typing a new
+   * secret left it publishing SHA-256 of the OLD secret under "1. Published
+   * tag (all you legitimately hold)", with the old byte count in "plus the
+   * length: N bytes", directly beneath the field holding the new one.
+   *
+   * The assertion is the invariant, not the copy: whatever tag the panel shows
+   * must be SHA-256 of the secret currently in the field, and the length it
+   * quotes must be that secret's length — or the panel must not be claiming
+   * anything at all.
+   */
+  test('editing the secret retires the previous forgery instead of misattributing it', async ({
+    page,
+  }) => {
+    const original = 'secret-key||user=alice&role=guest';
+    const first = await readForgery(page);
+    expect(first.publishedTag).toBe(nodeHash('sha256', original));
+
+    await page.locator('#lext-secret').fill('a much shorter key');
+    // Nothing may still be asserting facts about the previous secret.
+    await expect(page.locator('#lext-result .lext-facts')).toHaveCount(0);
+    await expect(page.locator('#lext-result .lext-verdict')).toHaveCount(0);
+    await expect(page.locator('#lext-result')).toContainText('Forge extended hash');
+
+    // Re-running restores the invariant against the CURRENT field values.
+    await page.locator('#lext-btn').click();
+    const second = await readForgery(page);
+    expect(second.publishedTag).toBe(nodeHash('sha256', 'a much shorter key'));
+    expect(second.reportedLen).toBe(utf8('a much shorter key').length);
+
+    // Same for the appended bytes, which the panel also quotes back.
+    await page.locator('#lext-append').fill('&role=root');
+    await expect(page.locator('#lext-result .lext-facts')).toHaveCount(0);
+    await page.locator('#lext-btn').click();
+    expect((await readForgery(page)).appended).toBe('&role=root');
+  });
+
   test('TAMPER PATH: attacker-controlled append is escaped, never executed', async ({ page }) => {
     const payload = '<img src=x onerror="window.__pwned = 1">';
     await page.locator('#lext-append').fill(payload);
@@ -659,6 +865,97 @@ test.describe('Section C: length-extension forgery', () => {
 });
 
 // ---------------------------------------------------------------------------
+// Section C — construction claims that the page's own panels can check.
+// ---------------------------------------------------------------------------
+
+test.describe('Section C: construction claims', () => {
+  /**
+   * REGRESSION — "Parallelizable, SIMD-friendly, fastest of the three."
+   *
+   * Stated flat, as a property of the three hashes on this page, twice (the
+   * BLAKE3 diagram caption and its SVG <desc>). The timing panel two sections
+   * up measures the opposite: over 35 timed runs across 7 message sizes from
+   * empty to 1 MB, SHA-256 was fastest in 34, and BLAKE3 measured 3-4x slower
+   * than SHA-256 at every size from 1 kB up. The repo's own README already said
+   * why ("a single-threaded browser loop cannot exercise SIMD and threading")
+   * — the page did not.
+   *
+   * This asserts the reconciliation, not the ranking: the timing panel is
+   * genuinely noisy, so it is not asserted which digest wins. What is asserted
+   * is that wherever the page claims "fastest of the three", it scopes the
+   * claim to a native build, and that the timing panel tells the reader the
+   * ordering it shows is not that claim's evidence.
+   */
+  test('the "fastest of the three" claim is scoped to the build that is actually fastest', async ({
+    page,
+  }) => {
+    // The invariant, over every place the page says it: no occurrence of
+    // "fastest of the three" may stand without naming the build it is true of.
+    // Asserted over text nodes rather than one selector, so a fourth copy
+    // pasted anywhere on the page is caught too.
+    const unscoped = await page.evaluate(() => {
+      const PHRASE = 'fastest of the three';
+      const holders = Array.from(document.querySelectorAll('body *')).filter(
+        (el) =>
+          (el.textContent ?? '').includes(PHRASE) &&
+          !Array.from(el.children).some((c) => (c.textContent ?? '').includes(PHRASE)),
+      );
+      return {
+        found: holders.length,
+        unscoped: holders
+          .map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim())
+          .filter((t) => !/native/i.test(t)),
+      };
+    });
+    expect(unscoped.found, 'the page must still make the claim somewhere').toBeGreaterThan(0);
+    expect(unscoped.unscoped, 'unscoped "fastest of the three" claims').toEqual([]);
+
+    const caption = page.locator('.diagram-card').nth(2).locator('p');
+    await expect(caption).toContainText('native build');
+    await expect(caption).toContainText('slower than SHA-256');
+
+    // The SVG description a screen reader gets says the same thing.
+    await expect(page.locator('#tree-desc')).toContainText('native');
+    await expect(page.locator('#tree-desc')).toContainText('single-threaded');
+
+    // And the panel that renders the contradicting numbers reconciles them.
+    await page.locator('.timing-details summary').click();
+    const note = page.locator('.timing-note');
+    await expect(note).toBeVisible();
+    await expect(note).toContainText('SHA-256');
+    await expect(note).toContainText('fastest of the three');
+  });
+
+  /**
+   * The sponge diagram prints "Rate 1088" and "Capacity 512" inside a box it
+   * divides — so the division is a rendering of those two numbers and has to
+   * match them. It was drawn at the midpoint, showing a 50/50 state directly
+   * contradicting its own labels, the Section A "1600-bit state, split 1088 |
+   * 512" row, and the padding modal.
+   */
+  test('the sponge diagram divides its state in the ratio it prints', async ({ page }) => {
+    const svg = page.locator('#sponge-desc').locator('..');
+    const geom = await svg.evaluate((el) => {
+      const rect = el.querySelector('rect:not([x="16"]):not([x="132"])') as SVGRectElement;
+      const line = Array.from(el.querySelectorAll('line')).find((l) => {
+        const x1 = Number(l.getAttribute('x1'));
+        const x2 = Number(l.getAttribute('x2'));
+        return Math.abs(x1 - Number(rect.getAttribute('x'))) < 1 && x2 > x1;
+      }) as SVGLineElement;
+      return {
+        top: Number(rect.getAttribute('y')),
+        height: Number(rect.getAttribute('height')),
+        split: Number(line.getAttribute('y1')),
+      };
+    });
+    const rateShare = (geom.split - geom.top) / geom.height;
+    // 1088/1600 = 0.68. Allow a pixel of rounding on a 120-unit box.
+    expect(rateShare).toBeGreaterThan(1088 / 1600 - 0.02);
+    expect(rateShare).toBeLessThan(1088 / 1600 + 0.02);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // Padding modal.
 // ---------------------------------------------------------------------------
 
@@ -671,7 +968,7 @@ test.describe('Padding info', () => {
     await expect(modal).toBeVisible();
 
     const text = (await page.locator('#padding-content').textContent()) ?? '';
-    const paddedHex = /SHA-256 padded block hex:\n([0-9a-f]+)/.exec(text)?.[1] ?? '';
+    const paddedHex = /512 bits:\n([0-9a-f]+)/.exec(text)?.[1] ?? '';
     const bytes = utf8(message);
 
     // Merkle-Damgard padding: message, 0x80 marker, zero fill to a whole number
@@ -699,9 +996,28 @@ test.describe('Padding info', () => {
     await setMessage(page, '');
     await page.locator('#padding-btn').click();
     const text = (await page.locator('#padding-content').textContent()) ?? '';
-    const paddedHex = /SHA-256 padded block hex:\n([0-9a-f]+)/.exec(text)?.[1] ?? '';
+    const paddedHex = /512 bits:\n([0-9a-f]+)/.exec(text)?.[1] ?? '';
     expect(paddedHex).toBe('80'.padEnd(128, '0'));
+    expect(text).toContain('1 block of 512 bits');
     await page.locator('#close-modal').click();
+  });
+
+  /**
+   * REGRESSION — the heading said "padded block", singular, for a dump that is
+   * one block only up to 55 message bytes. The shipped default message is 43
+   * bytes, thirteen keystrokes from two blocks. The heading now counts them,
+   * and the count must be the count the hex actually contains.
+   */
+  test('the block count in the heading is the number of blocks in the hex', async ({ page }) => {
+    for (const [bytes, blocks] of [[6, 1], [55, 1], [56, 2], [120, 3]] as const) {
+      await setMessage(page, 'z'.repeat(bytes));
+      await page.locator('#padding-btn').click();
+      const text = (await page.locator('#padding-content').textContent()) ?? '';
+      const hex = /512 bits:\n([0-9a-f]+)/.exec(text)?.[1] ?? '';
+      expect(hex.length / 128, `${bytes} bytes`).toBe(blocks);
+      expect(text).toContain(`${blocks} block${blocks === 1 ? '' : 's'} of 512 bits`);
+      await page.locator('#close-modal').click();
+    }
   });
 });
 

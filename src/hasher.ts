@@ -312,9 +312,19 @@ export interface AvalancheDistribution {
   /** Histogram bucket counts across [0,100] in `buckets.length` bins. */
   buckets: number[];
   bucketSize: number;
+  /** Every input bit the message has — NOT necessarily the number flipped. */
+  totalBits: number;
+  /** 1 when every input bit was flipped; n > 1 when only every nth was. */
+  step: number;
 }
 
-const DIST_MAX_BITS = 4096; // cap work: sample at most this many input bits
+/**
+ * Work cap. Above this the sweep flips every `step`th bit instead of every bit,
+ * so `percents.length` is a SAMPLE, not the whole population — which is why
+ * `totalBits` and `step` are reported: the UI's "flip every input bit" copy is
+ * only true at or below this cap, and has to say so above it.
+ */
+export const DIST_MAX_BITS = 4096; // cap work: sample at most this many input bits
 
 export function avalancheDistribution(
   message: string,
@@ -328,7 +338,7 @@ export function avalancheDistribution(
   const bucketSize = 100 / bucketCount;
   const percents: number[] = [];
   if (totalBits === 0) {
-    return { percents, mean: 0, min: 0, max: 0, buckets, bucketSize };
+    return { percents, mean: 0, min: 0, max: 0, buckets, bucketSize, totalBits: 0, step: 1 };
   }
 
   const original = fn(bytes);
@@ -356,5 +366,7 @@ export function avalancheDistribution(
     max,
     buckets,
     bucketSize,
+    totalBits,
+    step,
   };
 }

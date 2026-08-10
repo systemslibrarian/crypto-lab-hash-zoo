@@ -2,6 +2,7 @@ import { describeBitFlip, inputBitStrip, maxBitPosition } from './avalanche';
 import {
   avalancheAnalysis,
   avalancheDistribution,
+  DIST_MAX_BITS,
   hashAll,
   lengthExtend,
   oneLineHash,
@@ -13,6 +14,25 @@ import {
 } from './hasher';
 
 const defaultMessage = 'The quick brown fox jumps over the lazy dog';
+
+/**
+ * Placeholders for the two panels that are NOT recomputed as you type.
+ *
+ * Everything else in the lab re-renders on every keystroke, so these two were
+ * the only places a previous run's result could survive its own inputs — and
+ * both did. Editing the message left the sweep panel asserting "344 single-bit
+ * flips ... every one of the message's 344 input bits" about a message that no
+ * longer existed (clearing the message entirely put "Add a message above" in
+ * the strip and the grids while the histogram still reported its statistics),
+ * and editing the secret left the forgery panel publishing SHA-256 of the OLD
+ * secret under "all you legitimately hold", with the wrong byte length beside
+ * it. The sweep stays click-driven because it is heavy; the fix is to retire
+ * the stale answer rather than to recompute it.
+ */
+const SWEEP_PLACEHOLDER =
+  '<p class="empty-state">Press <strong>Run every-bit sweep</strong> to flip every input bit and plot the distribution.</p>';
+const FORGERY_STALE =
+  '<p class="empty-state">Inputs changed. Press <strong>Forge extended hash</strong> to run the attack against the secret and appended bytes now in the fields above.</p>';
 
 // Uniform, non-decorative byte spans. The previous byte-N (index mod 8)
 // coloring looked meaningful but wasn't, inviting learners to hunt for a
@@ -196,7 +216,7 @@ function buildAppHtml(): string {
       <details class="timing-details">
         <summary>Show indicative timing (not a benchmark)</summary>
         <div id="timing-grid-host"></div>
-        <p class="timing-note">In-browser average over 100 iterations, in microseconds. Indicative only: JIT warmup, garbage collection, CPU throttling, and other tabs make single-digit-microsecond numbers noisy, so treat them as a rough feel for relative cost rather than a benchmark. For real comparisons, measure a native build (for example <code>b3sum</code> vs <code>openssl</code>) on large inputs.</p>
+        <p class="timing-note">In-browser average over 100 iterations, in microseconds. Indicative only: JIT warmup, garbage collection, CPU throttling, and other tabs make single-digit-microsecond numbers noisy, so treat them as a rough feel for relative cost rather than a benchmark. Expect SHA-256 to win here: browsers run a portable single-threaded JavaScript BLAKE3 with no SIMD and no threads, which is precisely the two things BLAKE3's speed comes from — so Section C's "fastest of the three" is a claim about an optimised native build, not about this loop. For a real comparison, measure a native build (for example <code>b3sum</code> vs <code>openssl</code>) on large inputs.</p>
       </details>
     </section>
 
@@ -233,7 +253,7 @@ function buildAppHtml(): string {
 
       <div class="dist-block">
         <h3 class="mini-head">Is ~50% just luck? Flip every bit and see.</h3>
-        <p class="mini-note">One flip landing near 50% could be coincidence. This flips <em>every</em> input bit in turn and plots the distribution of output-diff percentages. A strong hash clusters them tightly around 50% — that tight cluster is the security-relevant law, not any single result.</p>
+        <p class="mini-note">One flip landing near 50% could be coincidence. This flips <em>every</em> input bit in turn and plots the distribution of output-diff percentages. A strong hash clusters them tightly around 50% — that tight cluster is the security-relevant law, not any single result. Past ${DIST_MAX_BITS} bits (messages over ${DIST_MAX_BITS / 8} bytes) it samples evenly instead of flipping every bit, so the sweep stays responsive; the readout always says which of the two it did.</p>
         <div class="dist-controls">
           <label for="dist-algo">Algorithm</label>
           <select id="dist-algo">
@@ -276,9 +296,13 @@ function buildAppHtml(): string {
             <desc id="sponge-desc">Input is absorbed into a 1600-bit state split into a 1088-bit rate and a 512-bit capacity, then output is squeezed out. Because attackers never see the secret capacity portion, the sponge resists length-extension attacks by design.</desc>
             <rect x="16" y="70" width="90" height="40" rx="8"/><text x="61" y="95">Message</text>
             <rect x="132" y="70" width="120" height="40" rx="8"/><text x="192" y="95">Absorb</text>
+            <!-- The divider sits at 1088/1600 of the box height, so the picture
+                 agrees with the two numbers printed inside it. Drawn at the
+                 midpoint it showed a 50/50 state, contradicting its own labels
+                 and the "1600-bit state, split 1088 | 512" row in Section A. -->
             <rect x="278" y="30" width="200" height="120" rx="10"/>
-            <line x1="278" y1="95" x2="478" y2="95"/>
-            <text x="378" y="82">Rate 1088</text><text x="378" y="122">Capacity 512</text>
+            <line x1="278" y1="112" x2="478" y2="112"/>
+            <text x="378" y="76">Rate 1088</text><text x="378" y="136">Capacity 512</text>
             <rect x="132" y="130" width="120" height="40" rx="8"/><text x="192" y="155">Squeeze</text>
             <line x1="106" y1="90" x2="132" y2="90"/><line x1="252" y1="90" x2="278" y2="90"/>
             <line x1="278" y1="150" x2="252" y2="150"/><line x1="132" y1="150" x2="106" y2="150"/>
@@ -291,7 +315,7 @@ function buildAppHtml(): string {
           <h3>BLAKE3 (Tree)</h3>
           <svg viewBox="0 0 520 190" role="img" aria-labelledby="tree-title tree-desc">
             <title id="tree-title">BLAKE3 binary tree construction</title>
-            <desc id="tree-desc">The message is divided into 1024-byte leaf chunks hashed independently, then pairs of chaining values are combined up a binary tree to a single root hash. Independent leaves can be hashed in parallel across CPU cores and SIMD lanes, which makes BLAKE3 the fastest of the three.</desc>
+            <desc id="tree-desc">The message is divided into 1024-byte leaf chunks hashed independently, then pairs of chaining values are combined up a binary tree to a single root hash. Independent leaves can be hashed in parallel across CPU cores and SIMD lanes, which is what makes an optimised native BLAKE3 build the fastest of the three. This page cannot show that: its BLAKE3 is single-threaded portable JavaScript with no SIMD, and the timing panel in Section A measures it slower than SHA-256.</desc>
             <circle cx="60" cy="150" r="14"/><circle cx="150" cy="150" r="14"/>
             <circle cx="240" cy="150" r="14"/><circle cx="330" cy="150" r="14"/>
             <circle cx="105" cy="100" r="14"/><circle cx="285" cy="100" r="14"/>
@@ -301,7 +325,7 @@ function buildAppHtml(): string {
             <line x1="105" y1="86" x2="195" y2="66"/><line x1="285" y1="86" x2="195" y2="66"/>
             <text x="28" y="175">Leaf chunks</text><text x="158" y="28">Root hash</text>
           </svg>
-          <p>Parallelizable, SIMD-friendly, fastest of the three.</p>
+          <p>Parallelizable and SIMD-friendly — fastest of the three <em>in an optimised native build</em> (<code>b3sum</code>). Not on this page: the JavaScript BLAKE3 it runs is single-threaded and un-vectorised, and Section A's timing panel measures it slower than SHA-256.</p>
         </article>
       </div>
 
@@ -469,20 +493,44 @@ function renderInputStrip(host: HTMLElement, message: string, bitPosition: numbe
     host.setAttribute('aria-label', 'Input bit strip: message is empty');
     return;
   }
+  const endBit = strip.startBit + strip.bits.length - 1;
   const truncated = strip.bits.length < strip.totalBits;
   host.setAttribute(
     'aria-label',
     `Input bit strip: ${strip.totalBits} bits, bit ${bitPosition} flipped (highlighted).` +
-      (truncated ? ' Showing the first bits only.' : ''),
+      (truncated ? ` Showing bits ${strip.startBit}–${endBit} only.` : ''),
   );
   host.innerHTML =
+    (strip.startBit > 0 ? '<span class="ibit-more">…</span>' : '') +
     strip.bits
       .map(
         (b) =>
           `<span class="ibit ${b.value ? 'ibit-1' : 'ibit-0'}${b.flipped ? ' ibit-flip' : ''}" title="${b.flipped ? 'flipped input bit' : `input bit = ${b.value}`}">${b.value}</span>`,
       )
       .join('') +
-    (truncated ? '<span class="ibit-more">…</span>' : '');
+    (endBit < strip.totalBits - 1 ? '<span class="ibit-more">…</span>' : '');
+}
+
+/**
+ * One sentence describing WHICH input bits the sweep actually flipped, used
+ * verbatim by the summary, the chart's aria-label and the announcement so all
+ * three describe the same population.
+ *
+ * The engine caps the sweep at DIST_MAX_BITS flips and samples every `step`th
+ * bit above it. "Flip every input bit" is therefore only true at or below the
+ * cap: a 1 kB paste flips half the bits, a 12 kB one flips 4.17% of them.
+ */
+function describeSweepScope(dist: AvalancheDistribution): string {
+  return dist.step === 1
+    ? `every one of the message's ${dist.totalBits} input bits`
+    : `a sample: every ${ordinal(dist.step)} of the message's ${dist.totalBits} input bits, ` +
+        `because the sweep caps at ${DIST_MAX_BITS} flips`;
+}
+
+function ordinal(n: number): string {
+  const tens = n % 100;
+  if (tens >= 11 && tens <= 13) return `${n}th`;
+  return `${n}${['th', 'st', 'nd', 'rd'][n % 10] ?? 'th'}`;
 }
 
 /**
@@ -511,9 +559,10 @@ function renderDistribution(
       return `<div class="hist-bar${near50 ? ' hist-mid' : ''}" style="height:${h}%" title="${lo}–${hi}% output diff: ${count} flips"></div>`;
     })
     .join('');
+  const scope = describeSweepScope(dist);
   host.innerHTML = `
-    <p class="dist-summary">${dist.percents.length} single-bit flips · mean <strong>${dist.mean.toFixed(1)}%</strong> · range ${dist.min.toFixed(1)}–${dist.max.toFixed(1)}% · the 50% column is highlighted.</p>
-    <div class="hist" role="img" aria-label="${algo}: distribution of output-diff percent over ${dist.percents.length} single-bit input flips. Mean ${dist.mean.toFixed(1)} percent, range ${dist.min.toFixed(1)} to ${dist.max.toFixed(1)} percent, tightly clustered near 50 percent.">${bars}</div>
+    <p class="dist-summary">${dist.percents.length} single-bit flips · ${scope} · mean <strong>${dist.mean.toFixed(1)}%</strong> · range ${dist.min.toFixed(1)}–${dist.max.toFixed(1)}% · the 50% column is highlighted.</p>
+    <div class="hist" role="img" aria-label="${algo}: distribution of output-diff percent over ${dist.percents.length} single-bit input flips, ${scope}. Mean ${dist.mean.toFixed(1)} percent, range ${dist.min.toFixed(1)} to ${dist.max.toFixed(1)} percent, tightly clustered near 50 percent.">${bars}</div>
     <div class="hist-axis"><span>0%</span><span>50%</span><span>100%</span></div>
   `;
   return dist;
@@ -688,12 +737,30 @@ export function initHashZoo(): void {
 
   const showPadding = (): void => {
     const info = paddingInfo(messageInput.value);
+    // "padded block" was singular for a dump that is one 512-bit block only up
+    // to 55 message bytes; at 56 it becomes two, and the default 43-byte
+    // message is one keystroke away from that. Name the real block count.
+    const blocks = info.sha256Padding.length / 128;
     paddingContent.textContent = [
-      `SHA-256 padded block hex:\n${info.sha256Padding}`,
+      `SHA-256 padded message — ${blocks} block${blocks === 1 ? '' : 's'} of 512 bits:\n${info.sha256Padding}`,
       `SHA-3 rate: ${info.sha3Rate} bits`,
       `SHA-3 capacity: ${info.sha3Capacity} bits`,
     ].join('\n\n');
     modal.showModal();
+  };
+
+  // Retire a rendered sweep whose message (or algorithm) has moved on. Guarded
+  // on the histogram actually being present so holding a key down does not
+  // rewrite the placeholder — and re-announce it — once per keystroke.
+  const invalidateSweep = (): void => {
+    if (distResult?.querySelector('.hist')) {
+      distResult.innerHTML = SWEEP_PLACEHOLDER;
+    }
+  };
+  const invalidateForgery = (): void => {
+    if (lextResult?.querySelector('.lext-facts')) {
+      lextResult.innerHTML = FORGERY_STALE;
+    }
   };
 
   hashBtn.addEventListener('click', () => runHash({ announceResult: true }));
@@ -706,7 +773,11 @@ export function initHashZoo(): void {
     updateSliderContext();
     runHash();
     runAvalanche();
+    invalidateSweep();
   });
+  distAlgo?.addEventListener('change', invalidateSweep);
+  lextSecret?.addEventListener('input', invalidateForgery);
+  lextAppend?.addEventListener('input', invalidateForgery);
 
   // Intro "what is a hash?" live one-liner.
   if (introInput && introHash) {
@@ -728,7 +799,7 @@ export function initHashZoo(): void {
         return;
       }
       announce(
-        `Swept ${d.percents.length} single-bit flips for ${algo}. ` +
+        `Swept ${d.percents.length} single-bit flips for ${algo}, ${describeSweepScope(d)}. ` +
           `Mean ${d.mean.toFixed(1)} percent output diff, clustered near 50 percent.`,
       );
     });
@@ -790,7 +861,7 @@ export function initHashZoo(): void {
     renderLengthExtension(lextResult, lextSecret.value, lextAppend.value);
   }
   if (distResult) {
-    distResult.innerHTML = '<p class="empty-state">Press <strong>Run every-bit sweep</strong> to flip every input bit and plot the distribution.</p>';
+    distResult.innerHTML = SWEEP_PLACEHOLDER;
   }
 
   // The avalanche grid is below the fold and heavy (3 x 256 animated cells).

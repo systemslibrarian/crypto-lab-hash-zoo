@@ -707,10 +707,12 @@ th[scope='row'] {
   font-weight: 700;
 }
 
+/* The strip now windows around the flipped bit, so an ellipsis can appear on
+   either side (or both). Symmetric padding, not padding-left only. */
 .ibit-more {
   color: var(--muted);
   align-self: center;
-  padding-left: 0.3rem;
+  padding: 0 0.3rem;
 }
 
 /* --- Per-byte avalanche heatmap --- */

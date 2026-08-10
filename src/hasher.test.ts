@@ -6,6 +6,7 @@ import {
   hashAll,
   avalancheAnalysis,
   avalancheDistribution,
+  DIST_MAX_BITS,
   lengthExtend,
   sha256GluePadding,
   oneLineHash,
@@ -15,6 +16,7 @@ import {
   flipBit,
   HASH_FUNCTIONS,
 } from './hasher';
+import { inputBitStrip } from './avalanche';
 
 const enc = new TextEncoder();
 
@@ -267,6 +269,70 @@ describe('avalancheDistribution (statistical ~50% law)', () => {
     const d = avalancheDistribution('', 'sha256');
     expect(d.percents).toHaveLength(0);
     expect(d.mean).toBe(0);
+    expect(d.totalBits).toBe(0);
+    expect(d.step).toBe(1);
+  });
+
+  // REGRESSION: the UI called this a sweep of "every input bit in turn", but
+  // the engine caps the work at DIST_MAX_BITS and samples above it. Nothing in
+  // the result said so, and the suite only ever swept short messages — the one
+  // range where "every bit" happened to be true. `totalBits` and `step` are the
+  // two facts the copy needs, so pin them at and either side of the cap.
+  it('reports whether it flipped every input bit or sampled, at and past the cap', () => {
+    const atCap = avalancheDistribution('z'.repeat(DIST_MAX_BITS / 8), 'sha256');
+    expect(atCap.totalBits).toBe(DIST_MAX_BITS);
+    expect(atCap.step).toBe(1);
+    expect(atCap.percents.length).toBe(DIST_MAX_BITS);
+
+    // One byte over the cap and it is a 1-in-2 sample, not a sweep.
+    const overCap = avalancheDistribution('z'.repeat(DIST_MAX_BITS / 8 + 1), 'sha256');
+    expect(overCap.totalBits).toBe(DIST_MAX_BITS + 8);
+    expect(overCap.step).toBe(2);
+    expect(overCap.percents.length).toBeLessThan(overCap.totalBits);
+
+    // `step` is never decorative: it always explains the shortfall exactly.
+    for (const bytes of [1, 43, 512, 513, 1000, 2000]) {
+      const d = avalancheDistribution('z'.repeat(bytes), 'sha256');
+      expect(d.totalBits).toBe(bytes * 8);
+      expect(d.percents.length).toBe(Math.ceil(d.totalBits / d.step));
+      expect(d.step === 1).toBe(d.percents.length === d.totalBits);
+      expect(d.percents.length).toBeLessThanOrEqual(DIST_MAX_BITS);
+      expect(d.buckets.reduce((a, b) => a + b, 0)).toBe(d.percents.length);
+    }
+  });
+});
+
+describe('inputBitStrip (the "one bit is flipped (highlighted)" caption)', () => {
+  // REGRESSION: the strip always showed the first 512 bits, so every slider
+  // position past bit 511 rendered a strip with nothing highlighted underneath
+  // a caption promising a highlight and an aria-label naming the bit — 288 of
+  // the 800 positions on a 100-byte message, 7488 of 8000 on a 1 kB one.
+  it('always contains the flipped bit, at every position of every length', () => {
+    for (const bytes of [1, 10, 63, 64, 65, 100, 1000]) {
+      const message = 'z'.repeat(bytes);
+      const totalBits = bytes * 8;
+      for (let p = 0; p < totalBits; p += 1) {
+        const strip = inputBitStrip(message, p);
+        const highlighted = strip.bits.flatMap((b, i) => (b.flipped ? [i] : []));
+        expect(highlighted, `${bytes}B bit ${p}`).toEqual([strip.flippedIndex]);
+        expect(strip.startBit + strip.flippedIndex).toBe(p);
+        expect(strip.totalBits).toBe(totalBits);
+      }
+    }
+  });
+
+  it('windows byte-aligned and still reports the message’s real bit values', () => {
+    const message = 'z'.repeat(100);
+    const bytes = enc.encode(message);
+    for (let p = 0; p < 800; p += 1) {
+      const strip = inputBitStrip(message, p);
+      expect(strip.startBit % 8).toBe(0);
+      expect(strip.startBit + strip.bits.length).toBeLessThanOrEqual(strip.totalBits);
+      strip.bits.forEach((b, i) => {
+        const abs = strip.startBit + i;
+        expect(b.value).toBe(((bytes[abs >> 3] >> (7 - (abs % 8))) & 1) as 0 | 1);
+      });
+    }
   });
 });
 
