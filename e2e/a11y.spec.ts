@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { boot, driveAllStates, NARROW } from './gate';
+import { boot, driveAllStates, expectBaselineNotStale, NARROW } from './gate';
 
 /**
  * WCAG A/AA regression gate. Deploys are already gated on hash correctness;
@@ -16,6 +16,7 @@ for (const theme of ['dark', 'light'] as const) {
     test.setTimeout(180_000);
     await boot(page, theme);
     await driveAllStates(page, theme);
+    expectBaselineNotStale();
   });
 
   // A full axe pass at 380px is slow: narrow width reflows the digest table and
@@ -25,5 +26,6 @@ for (const theme of ['dark', 'light'] as const) {
     await page.setViewportSize(NARROW);
     await boot(page, theme);
     await driveAllStates(page, `${theme} @380px`);
+    expectBaselineNotStale();
   });
 }
