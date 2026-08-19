@@ -155,7 +155,6 @@ function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
 function buildAppHtml(): string {
   return `
     <a href="#hash-comparison" class="skip-link">Skip to main content</a>
-    <button id="theme-toggle" type="button" aria-label="Switch to light mode" title="Toggle color theme"></button>
 
     <main>
     <header class="cl-hero">
@@ -623,7 +622,6 @@ export function initHashZoo(): void {
   const messageInput = app.querySelector<HTMLTextAreaElement>('#message-input');
   const hashBtn = app.querySelector<HTMLButtonElement>('#hash-btn');
   const resultsBody = app.querySelector<HTMLTableSectionElement>('#hash-results');
-  const themeToggle = app.querySelector<HTMLButtonElement>('#theme-toggle');
   const slider = app.querySelector<HTMLInputElement>('#bit-slider');
   const bitValue = app.querySelector<HTMLOutputElement>('#bit-value');
   const bitLabel = app.querySelector<HTMLParagraphElement>('#bit-label');
@@ -654,7 +652,6 @@ export function initHashZoo(): void {
     !messageInput ||
     !hashBtn ||
     !resultsBody ||
-    !themeToggle ||
     !slider ||
     !bitValue ||
     !bitLabel ||
@@ -821,22 +818,6 @@ export function initHashZoo(): void {
     });
   }
 
-  const toggle = themeToggle;
-
-  function syncToggle(): void {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    toggle.textContent = isDark ? '\u{1F319}' : '\u{2600}\u{FE0F}';
-    toggle.setAttribute('aria-label', isDark ? 'Switch to light mode' : 'Switch to dark mode');
-  }
-
-  toggle.addEventListener('click', () => {
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const next = isDark ? 'light' : 'dark';
-    document.documentElement.setAttribute('data-theme', next);
-    localStorage.setItem('theme', next);
-    syncToggle();
-  });
-
   paddingBtn.addEventListener('click', showPadding);
   closeModalBtn.addEventListener('click', () => modal.close());
   modal.addEventListener('click', (event) => {
@@ -851,7 +832,6 @@ export function initHashZoo(): void {
 
   wireTabs(app);
 
-  syncToggle();
   updateSliderContext();
   runHash();
 
