@@ -390,7 +390,13 @@ function buildAppHtml(): string {
         <p>SHA-256 and SHA-3 produce the same output size and both look like random noise, but their internal designs are completely different. SHA-2 uses a sequential Merkle-Damgaard construction that processes blocks one at a time. SHA-3 uses a sponge that absorbs input and squeezes output, making it immune to length extension attacks by design. BLAKE3 goes further: it is a binary tree of hashes, so it can be computed in parallel across CPU cores. Understanding the construction tells you which attack surface you are accepting.</p>
       </details>
     </section>
-    </main>
+    <section class="research-context" id="reduced-sha2" aria-labelledby="sha2-research-heading" style="padding:1.25rem;margin-top:1.5rem;line-height:1.7">
+<h2 id="sha2-research-heading">Reduced-round SHA-2 research</h2>
+<p><a style="color:inherit;text-decoration:underline" href="https://eprint.iacr.org/2026/232" target="_blank" rel="noopener noreferrer">EUROCRYPT 2026 work, received 12 February 2026</a> reaches 37-step SHA-256 collision attacks.</p>
+<p><a style="color:inherit;text-decoration:underline" href="https://eprint.iacr.org/2026/1120" target="_blank" rel="noopener noreferrer">A preprint revised 9 September 2026</a> reports 38-step SHA-256/SHA-512 attacks, a 39-step result for SHA-512 only, and an actual colliding pair for 36-step SHA-256. Work-factor results and a supplied pair are different evidence.</p>
+<p><strong>Full SHA-256 has 64 steps; SHA-512 has 80.</strong> These reduced-round results do not establish a full-round collision. This page still computes its existing full-round hashes. It does not execute the reported SHA-2 collision attack or verify that pair. A future verifier needs the authors’ exact bytes, IV, padding and step convention; no unverified pair is substituted here. Reviewed 12 October 2026.</p>
+</section>
+</main>
 
     <footer class="panel footer-panel">
       <nav aria-label="Related demos">
