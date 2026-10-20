@@ -4,7 +4,9 @@
 
 Hash Zoo is an interactive side-by-side comparison of three cryptographic hash functions: SHA-256 (Merkle-Damgård construction via `@noble/hashes/sha2`), SHA3-256 (Keccak sponge construction via `@noble/hashes/sha3`), and BLAKE3 (binary tree hash via `@noble/hashes/blake3`). It opens with a plain-language "what is a hash?" on-ramp, then computes 256-bit digests, visualizes the avalanche effect — how flipping a single input bit changes roughly half the output bits — showing the flipped input bit next to the output storm, and demonstrates the flagship structural difference between constructions by performing a **real, live SHA-256 length-extension forgery** in the browser. Timing across 100 iterations and SHA-256 padding / SHA-3 rate–capacity details are available as secondary, honestly-caveated views.
 
-Every digest, forged tag, and avalanche count is computed in-browser from the real `@noble/hashes` primitives — no hardcoded or faked output. The length-extension forgery is proven at runtime by recomputing SHA-256 over the reconstructed message from scratch and asserting equality.
+Section D adds an AES-128 Davies–Meyer teaching hash using `@noble/ciphers`, with free-start preimages, fixed points, and an ambiguous-padding collision. It preserves the existing full-round hash comparison and length-extension paths.
+
+Every digest, forged tag, and avalanche count in Sections A–C is computed in-browser from the real `@noble/hashes` primitives — no hardcoded or faked output. The length-extension forgery is proven at runtime by recomputing SHA-256 over the reconstructed message from scratch and asserting equality.
 
 ## Exhibits
 
@@ -12,7 +14,8 @@ Every digest, forged tag, and avalanche count is computed in-browser from the re
 2. **Section A — Hash Comparison.** SHA-256, SHA3-256, and BLAKE3 side-by-side: 256-bit digests, output size, internal state, and construction, with plain-language annotations. Indicative timing is tucked behind a "show timing" toggle (see the caveat below).
 3. **Section B — Avalanche Effect.** Flip one input bit (shown highlighted in an input-bit strip) and watch ~50% of the 256 output bits flip. A per-byte heatmap encodes how many bits changed in each output byte (uniform diffusion), and a "flip every bit" sweep plots the distribution of output-diff percentages, showing ~50% is a statistical law, not one lucky result.
 4. **Section C — Construction Comparison + length extension.** Merkle-Damgård, sponge, and tree diagrams, plus an interactive length-extension forgery: from a published SHA-256 tag and its length alone (never the secret bytes), append attacker data and produce a valid extended tag — then see it verified against a from-scratch recompute. Contrasts with the sponge's withheld capacity lane.
-5. **Info Panel.** Tabbed construction notes with inline jargon glossaries (IV, chaining value, rate/capacity, sponge, XOF, SIMD) and "Advanced" disclosures gating Davies-Meyer and Keccak-f[1600], plus guidance on choosing a hash function.
+5. **Section D — A hash from a block cipher.** Wire a real AES block through feed-forward XOR, remove the wire to get a free-start preimage in one decryption, compute a fixed point, and compare zero-fill with length-delimited padding. Inspect every AES block of both message chains; a separate chosen-IV experiment repeats the fixed point. This 128-bit-state teaching hash is not for use.
+6. **Info Panel.** Tabbed construction notes with inline jargon glossaries (IV, chaining value, rate/capacity, sponge, XOF, SIMD) and "Advanced" disclosures gating Davies-Meyer and Keccak-f[1600], plus guidance on choosing a hash function.
 
 ## When to Use It
 
@@ -34,6 +37,9 @@ Start with the "what is a hash?" box and type to watch a live fingerprint. Type 
 The "Time (avg µs)" row is an in-browser average over 100 iterations. It is deliberately labelled *indicative only*, both here and in the app, because single-digit-microsecond measurements taken with `performance.now()` in a JS engine are dominated by noise: JIT warmup, garbage-collection pauses, CPU frequency scaling, and background tab activity all move the numbers around. Do not read the ordering as a definitive speed ranking — on tiny inputs the three functions are all sub-microsecond and the differences are within measurement error. BLAKE3's real speed advantage shows up on large inputs with SIMD and multithreading, which a single-threaded browser loop cannot exercise. For a real comparison, benchmark native builds (for example `b3sum` vs `openssl dgst`) on megabyte-scale inputs. The digests themselves are exact and verified against known-answer test vectors (see below).
 
 ## What Can Go Wrong
+
+- **A block cipher without feed-forward is invertible.** A free-start adversary can choose a chaining input by one AES decryption. With XOR, that shortcut is not a general inversion method; the all-zero input is an explicitly shown exception.
+- **Ambiguous padding.** Correct AES calls and correct compression steps cannot rescue zero-fill padding: a non-aligned message and the same message followed by a zero byte have identical padded bytes. The length-delimited default separates this pair.
 
 - **Length extension on bare SHA-256.** Merkle-Damgård hashes expose their internal state as the final digest, allowing an attacker to append data and compute a valid hash without knowing the original message. Use HMAC-SHA256 or switch to SHA-3/BLAKE3.
 - **Confusing hash speed with password safety.** SHA-256, SHA3-256, and BLAKE3 are all fast hashes — unsuitable for password storage because an attacker can brute-force billions of guesses per second.
@@ -99,6 +105,33 @@ verdict cannot ship either. It asserts:
 
 `npm test` runs only the Vitest unit suite; the Playwright suite in `e2e/` is excluded from it and
 run separately via `npm run test:e2e` (`npm run test:a11y` is the same command, kept as an alias).
+
+Section D adds 11 unit tests (42 total), including all four AES-128 ECB blocks
+from NIST SP 800-38A F.1.1/F.1.2 in both directions and the complete 64-byte
+example. There is no claimed published AES-based Davies–Meyer hash vector.
+Randomized properties and both MD padding chains are checked against Node’s
+independent OpenSSL AES; tests cover 1,025 padding lengths and the zero-input
+feed-forward exception. `@types/node` is a development-only dependency for
+those independent test oracles.
+
+Six new browser claims independently recompute every displayed AES block,
+compression, preimage, fixed point, hash pair and chosen-IV chain with OpenSSL.
+The negative fixture has correct AES calls and equal digests alongside the
+visible warning that a sound block cipher cannot fix ambiguous padding.
+`npm run test:mutations:dm` exercises concrete source faults, changed bundle
+hashes, named zero-retry failures and exact restored artifacts. The runner
+refuses to count stale served scripts as mutation kills.
+
+The new section is included in the complete accessibility walks, with an
+additional 320px state walk. No header, theme, footer, existing hash primitive,
+length-extension code or reduced-round research exhibit is changed.
+
+Sources: [NIST SP 800-38A, Appendix F](https://nvlpubs.nist.gov/nistpubs/Legacy/SP/nistspecialpublication800-38a.pdf);
+[FIPS 180-4 §6.2.2](https://nvlpubs.nist.gov/nistpubs/FIPS/NIST.FIPS.180-4.pdf);
+Katz–Lindell, third edition, §6.2 Construction 6.3 and §7.3.1;
+[Kelsey–Schneier, EUROCRYPT 2005](https://www.schneier.com/academic/archives/2005/01/second_preimages_on.html)
+for expandable messages only (the long-message attack is not executed here).
+The glossary now distinguishes SHA-256’s word-wise addition from this XOR.
 
 ## Related Demos
 

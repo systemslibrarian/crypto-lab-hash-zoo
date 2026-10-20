@@ -10,16 +10,19 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "playwright test",
-    "test:a11y": "playwright test"
+    "test:a11y": "playwright test",
+    "test:mutations:dm": "node scripts/check-dm-mutations.mjs"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.13.0",
     "@playwright/test": "^1.64.0",
+    "@types/node": "^26.6.5",
     "typescript": "~7.0.2",
     "vite": "^8.3.4",
     "vitest": "^5.0.4"
   },
   "dependencies": {
+    "@noble/ciphers": "^2.4.0",
     "@noble/hashes": "^2.4.0"
   }
 }

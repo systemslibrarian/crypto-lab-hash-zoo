@@ -119,9 +119,11 @@ export async function boot(page: Page, theme: 'dark' | 'light'): Promise<void> {
 
   // The whole lab is injected by JS into an empty `#app`. Assert the structure
   // every scan relies on is really there, so no scan can pass over a shell.
-  await expect(page.locator('#app main .panel')).toHaveCount(5);
+  await expect(page.locator('#app main .panel')).toHaveCount(6);
   await expect(page.locator('#hash-intro h2')).toContainText('What is a hash?');
   await expect(page.locator('#info-panel [role="tab"]')).toHaveCount(4);
+  await expect(page.locator('#blockcipher-section .dm-card')).toHaveCount(4);
+  await expect(page.locator('#blockcipher-section [data-verdict]')).toHaveCount(0);
   // The intro digest is computed on load from the seeded input, so it is the
   // signal that the lab's hashing path has actually run rather than merely
   // rendered its markup.
@@ -359,4 +361,15 @@ export async function driveAllStates(page: Page, theme: string): Promise<void> {
   await expect(page.locator('#padding-modal')).toBeVisible();
   await scan(page, `${theme} / padding modal`);
   await page.locator('#close-modal').click();
+  await driveDMStates(page,theme);
+}
+
+
+export async function driveDMStates(page:Page,label:string):Promise<void>{
+  await page.locator('#blockcipher-section').scrollIntoViewIfNeeded();await scan(page,`${label}: DM arrival`);
+  await page.locator('#dm-compress').click();await page.locator('#dm-preimage').click();await page.locator('#dm-fixed').click();await page.locator('#dm-hash').click();await scan(page,`${label}: DM default results`);
+  await page.locator('#dm-feed').uncheck();await page.locator('#dm-preimage').click();await page.locator('#dm-zero').check();await page.locator('#dm-hash').click();await scan(page,`${label}: DM broken preimage and padding`);
+  await page.locator('#dm-hash-result details').first().locator('summary').click();await scan(page,`${label}: DM actual AES trace`);
+  await page.locator('#dm-chosen').click();await page.locator('#dm-chosen-result details').last().locator('summary').click();await scan(page,`${label}: DM chosen IV repetitions`);
+  await page.locator('#dm-key').fill('abz');await page.locator('#dm-compress').click();await scan(page,`${label}: DM parser error`);
 }

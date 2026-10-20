@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { createHash, createCipheriv, createDecipheriv } from 'node:crypto';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 /**
@@ -1061,4 +1061,89 @@ test.describe('Info panel', () => {
     await expect(panel).toContainText('1088');
     await expect(panel).toContainText('512');
   });
+});
+
+// AES here is OpenSSL, independent of the browser's @noble/ciphers.
+function oracleAES(k:string,x:string,decrypt=false):string {
+  const cipher=decrypt?createDecipheriv('aes-128-ecb',Buffer.from(k,'hex'),null):createCipheriv('aes-128-ecb',Buffer.from(k,'hex'),null);
+  cipher.setAutoPadding(false);return Buffer.concat([cipher.update(Buffer.from(x,'hex')),cipher.final()]).toString('hex');
+}
+function xorHex(a:string,b:string):string{return Buffer.from(Buffer.from(a,'hex').map((v,i)=>v^Buffer.from(b,'hex')[i])).toString('hex');}
+async function dmValue(root:Locator,name:string):Promise<string>{return (await root.locator(`[data-value="${name}"]`).innerText()).trim();}
+function oracleMD(message:Buffer,padding:string,iv='0'.repeat(32)){
+  let padded:Buffer;
+  if(padding==='zero-fill'){padded=Buffer.alloc(Math.ceil(message.length/16)*16);message.copy(padded);}else{
+    const extra=[128];while((message.length+extra.length)%16!==8)extra.push(0);
+    const length=Buffer.alloc(8);length.writeBigUInt64BE(BigInt(message.length)*8n);padded=Buffer.concat([message,Buffer.from(extra),length]);
+  }
+  let state=iv;const blocks:{message:string;input:string;encrypted:string;output:string}[]=[];
+  for(let offset=0;offset<padded.length;offset+=16){const m=padded.subarray(offset,offset+16).toString('hex'),input=state,encrypted=oracleAES(m,input);state=xorHex(encrypted,input);blocks.push({message:m,input,encrypted,output:state});}
+  return {padded:padded.toString('hex'),digest:state,blocks};
+}
+async function checkDMTrace(root:Locator,expected:ReturnType<typeof oracleMD>):Promise<void>{
+  if(await root.getAttribute('open')===null)await root.locator('summary').click();
+  expect(await dmValue(root,'padded')).toBe(expected.padded);await expect(root.locator('tbody tr')).toHaveCount(expected.blocks.length);
+  for(let i=0;i<expected.blocks.length;i++)for(const name of ['message','input','encrypted','output'] as const)expect(await root.locator(`[data-block="${i}"] [data-part="${name}"]`).innerText()).toBe(expected.blocks[i][name]);
+}
+
+test('DM compression wires real AES through XOR and rejects malformed block inputs',async({page})=>{
+  const out=page.locator('#dm-compression-result');await page.locator('#dm-compress').click();let k=await dmValue(out,'key'),x=await dmValue(out,'x');
+  expect(await dmValue(out,'cipher')).toBe(oracleAES(k,x));expect(await dmValue(out,'output')).toBe(xorHex(oracleAES(k,x),x));await expect(out.locator('[data-verdict]')).toHaveAttribute('data-verdict','neutral');
+  await page.locator('#dm-format').selectOption('text');await page.locator('#dm-key').fill('é'.repeat(8));await page.locator('#dm-compress').click();k=Buffer.from('é'.repeat(8)).toString('hex');expect(await dmValue(out,'key')).toBe(k);expect(await dmValue(out,'output')).toBe(xorHex(oracleAES(k,x),x));
+  await page.locator('#dm-key').fill('é'.repeat(9));await page.locator('#dm-compress').click();await expect(out).toContainText('received 18');await expect(out.locator('[data-value]')).toHaveCount(0);
+  await page.locator('#dm-format').selectOption('hex');await page.locator('#dm-key').fill('abz');await page.locator('#dm-compress').click();await expect(out).toContainText('position 3');
+});
+
+test('DM free-start inverse attack recomputes both modes and the zero-input exception',async({page})=>{
+  const out=page.locator('#dm-preimage-result'),k=await page.locator('#dm-key').inputValue();await expect(page.locator('#dm-feed')).toBeChecked();
+  for(const feed of [true,false]){
+    await page.locator('#dm-feed').setChecked(feed);await page.locator('#dm-preimage').click();
+    const target=await dmValue(out,'target'),x=await dmValue(out,'x'),cipher=oracleAES(k,x),expected=feed?xorHex(cipher,x):cipher;
+    expect(x).toBe(oracleAES(k,target,true));expect(cipher).toBe(target);expect(await dmValue(out,'output')).toBe(expected);await expect(out.locator('[data-verdict]')).toHaveAttribute('data-verdict',feed?'held':'alarm');
+  }
+  await expect(page.locator('#dm-feed-mode')).toContainText('BROKEN VARIANT');
+  // The supplied y=x edge is valid; target is unrelated to the free-start input solved for.
+  await page.locator('#dm-y').fill(await page.locator('#dm-x').inputValue());await page.locator('#dm-preimage').click();expect(await dmValue(out,'output')).toBe(await dmValue(out,'target'));
+  await page.locator('#dm-feed').check();await page.locator('#dm-y').fill(oracleAES(k,'0'.repeat(32)));await page.locator('#dm-preimage').click();expect(await dmValue(out,'x')).toBe('0'.repeat(32));expect(await dmValue(out,'output')).toBe(await dmValue(out,'target'));await expect(out.locator('[data-verdict]')).toHaveAttribute('data-verdict','neutral');await expect(out).toContainText('ZERO-INPUT EXCEPTION');
+});
+
+test('DM fixed point is independently decrypted from zero and displayed neutrally',async({page})=>{
+  await page.locator('#dm-fixed').click();const out=page.locator('#dm-fixed-result'),k=await dmValue(out,'key'),p=await dmValue(out,'point');
+  expect(p).toBe(oracleAES(k,'0'.repeat(32),true));expect(oracleAES(k,p)).toBe('0'.repeat(32));expect(await dmValue(out,'cipher')).toBe('0'.repeat(32));expect(await dmValue(out,'output')).toBe(p);await expect(out.locator('[data-verdict]')).toHaveAttribute('data-verdict','neutral');
+});
+
+test('DM padding chains every actual AES block and negative collision claim independently',async({page})=>{
+  const out=page.locator('#dm-hash-result');await expect(page.locator('#dm-kl')).toBeChecked();
+  for(const padding of ['kl-6.3','zero-fill'])for(const m of ['hello','a','a'.repeat(7),'a'.repeat(8),'a'.repeat(15),'a'.repeat(16),'a'.repeat(17),'é'.repeat(9)]){
+    await page.locator(padding==='zero-fill'?'#dm-zero':'#dm-kl').check();await page.locator('#dm-message').fill(m);await page.locator('#dm-hash').click();
+    const a=oracleMD(Buffer.from(m),padding),b=oracleMD(Buffer.concat([Buffer.from(m),Buffer.from([0])]),padding),collision=a.digest===b.digest;
+    expect(await dmValue(out,'digest-a')).toBe(a.digest);expect(await dmValue(out,'digest-b')).toBe(b.digest);await expect(out.locator('[data-verdict]')).toHaveAttribute('data-verdict',collision?'alarm':'held');
+    await checkDMTrace(out.locator('.dm-trace').nth(0),a);await checkDMTrace(out.locator('.dm-trace').nth(1),b);
+    const equal=await out.locator('.dm-byte-diff li').evaluateAll(xs=>xs.map(x=>x.getAttribute('data-equal')));expect(equal).toEqual(Array.from({length:16},(_,i)=>String(a.digest.slice(i*2,i*2+2)===b.digest.slice(i*2,i*2+2))));
+    if(collision){await expect(out).toContainText('EVERY BLOCK CORRECT — AND COLLIDING');await expect(out.locator('[data-claim="NEG-DM"]')).toBeVisible();await expect(out.locator('[data-claim="NEG-DM"]')).toHaveText('A compression function built from a sound block cipher does not make the hash collision-resistant if the padding is ambiguous.');}
+    else if(padding==='kl-6.3'){expect(a.padded.slice(-32)).not.toBe(b.padded.slice(-32));await expect(out).toContainText('lengths differ, last blocks differ');}
+    else await expect(out).toContainText('block-aligned');
+  }
+});
+
+test('DM chosen-IV repeated-block experiment independently verifies all six chains',async({page})=>{
+  await page.locator('#dm-chosen').click();const out=page.locator('#dm-chosen-result'),k=await dmValue(out,'key'),iv=await dmValue(out,'chosen-iv');expect(iv).toBe(oracleAES(k,'0'.repeat(32),true));
+  for(const padding of ['zero-fill','kl-6.3']){const box=out.locator(`[data-padding="${padding}"]`),digests:string[]=[];
+    for(let n=1;n<=3;n++){const expected=oracleMD(Buffer.from(k.repeat(n),'hex'),padding,iv);expect(await dmValue(box,`repeat-${n}`)).toBe(expected.digest);digests.push(expected.digest);await checkDMTrace(box.locator('.dm-trace').nth(n-1),expected);}
+    expect(new Set(digests).size).toBe(padding==='zero-fill'?1:3);await expect(box.locator('[data-verdict]')).toHaveAttribute('data-verdict',padding==='zero-fill'?'alarm':'held');await expect(box).toContainText('CHOSEN IV');
+  }
+});
+
+test('DM empty and byte-budget refusals retire results and no-op input preserves them',async({page})=>{
+  await page.locator('#dm-hash').click();const out=page.locator('#dm-hash-result'),before=await out.innerHTML();await page.locator('#dm-message').dispatchEvent('input');expect(await out.innerHTML()).toBe(before);
+  await page.locator('#dm-message').fill('changed');await expect(out.locator('[data-verdict]')).toHaveCount(0);await expect(out).toContainText('Result retired');
+  await page.locator('#dm-message').fill('');await page.locator('#dm-hash').click();await expect(out).toContainText('Empty message');await expect(out.locator('[data-value]')).toHaveCount(0);
+  await page.locator('#dm-message').fill('é'.repeat(2049));await page.locator('#dm-hash').click();await expect(out).toContainText('received 4098');
+});
+
+test.afterEach(async({page})=>{
+  if(!process.env.MUTATION_ASSETS)return;const expected=JSON.parse(process.env.MUTATION_ASSETS) as Record<string,string>;
+  for(const src of await page.locator('script[src]').evaluateAll(xs=>xs.map(x=>(x as HTMLScriptElement).src))){const file=src.split('/').at(-1)!;
+    if(!expected[file])throw new Error('MUTATION_ASSET_MISMATCH: unknown '+file);const response=await page.request.get(src),hash=createHash('sha256').update(await response.body()).digest('hex');if(hash!==expected[file])throw new Error('MUTATION_ASSET_MISMATCH: '+file);
+  }
 });

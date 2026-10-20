@@ -1,5 +1,5 @@
 import { test } from '@playwright/test';
-import { boot, driveAllStates, expectBaselineNotStale, NARROW } from './gate';
+import { boot, driveAllStates, driveDMStates, expectBaselineNotStale, NARROW } from './gate';
 
 /**
  * WCAG A/AA regression gate. Deploys are already gated on hash correctness;
@@ -29,3 +29,7 @@ for (const theme of ['dark'] as const) {
     expectBaselineNotStale();
   });
 }
+
+test('DM section is accessible at 320px across computed results and errors',async({page})=>{
+ test.setTimeout(300000);await page.setViewportSize({width:320,height:900});await boot(page,'dark');await driveDMStates(page,'320px');
+});

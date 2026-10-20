@@ -1,0 +1,90 @@
+[
+  {
+    "name": "compression drops feed-forward",
+    "sourceDiff": "diff --git a/src/blockcipher/dm.ts b/src/blockcipher/dm.ts\nindex c03e237..3c6ac3b 100644\n--- a/src/blockcipher/dm.ts\n+++ b/src/blockcipher/dm.ts\n@@ -18,7 +18,7 @@ export function aesEncryptBlock(k:Uint8Array,x:Uint8Array):Uint8Array{block(k,'M\n export function aesDecryptBlock(k:Uint8Array,y:Uint8Array):Uint8Array{block(k,'Message block / AES key');block(y,'AES target');return ecb(k,{disablePadding:true}).decrypt(y);}\n export function xor(a:Uint8Array,b:Uint8Array):Uint8Array{block(a,'XOR input');block(b,'XOR input');return Uint8Array.from(a,(v,i)=>v^b[i]);}\n // [extension] point: Matyas–Meyer–Oseas and Miyaguchi–Preneel change this wiring.\n-function compression(k:Uint8Array,x:Uint8Array):BlockTrace{const encrypted=aesEncryptBlock(k,x);return {message:new Uint8Array(k),input:new Uint8Array(x),encrypted,output:xor(encrypted,x)};}\n+function compression(k:Uint8Array,x:Uint8Array):BlockTrace{const encrypted=aesEncryptBlock(k,x);return {message:new Uint8Array(k),input:new Uint8Array(x),encrypted,output:encrypted};}\n export function daviesMeyer(k:Uint8Array,x:Uint8Array):Uint8Array{return compression(k,x).output;}\n /** Deliberately broken free-start compression: the feed-forward wire is absent. */\n export function noFeedForward(k:Uint8Array,x:Uint8Array):Uint8Array{return aesEncryptBlock(k,x);}\n",
+    "baseline": "8b04b51bfbe42c70258e5c1f16bff7e57d5b211f4f5442a53ef8bbe05cf9baee",
+    "mutant": "6010c68b35aa29f80fb42bf358fe3739443ec5011ab6ceeaf2dcf71314f8a7bb",
+    "namedTest": "DM compression wires real AES",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "padding omits actual bit length",
+    "sourceDiff": "diff --git a/src/blockcipher/dm.ts b/src/blockcipher/dm.ts\nindex c03e237..1520df7 100644\n--- a/src/blockcipher/dm.ts\n+++ b/src/blockcipher/dm.ts\n@@ -27,7 +27,7 @@ export function fixedPoint(m:Uint8Array):Uint8Array{return aesDecryptBlock(m,new\n export function padZeroFill(message:Uint8Array):Uint8Array{const out=new Uint8Array(Math.ceil(message.length/16)*16);out.set(message);return out;}\n export function padKL63(message:Uint8Array):Uint8Array {\n   const out=new Uint8Array(Math.ceil((message.length+1+8)/16)*16);out.set(message);out[message.length]=0x80;\n-  new DataView(out.buffer).setBigUint64(out.length-8,BigInt(message.length)*8n,false);return out;\n+  new DataView(out.buffer).setBigUint64(out.length-8,0n,false);return out;\n }\n export function mdHash(message:Uint8Array,{padding,iv=FIXED_IV}:{padding:Padding;iv?:Uint8Array}):MDResult {\n   block(iv,'IV');if(message.length>65536)throw new Error('Teaching hash accepts at most 65,536 bytes per run.');\n",
+    "baseline": "8b04b51bfbe42c70258e5c1f16bff7e57d5b211f4f5442a53ef8bbe05cf9baee",
+    "mutant": "4e5d9a53060e40919e2fe343e7072973c6248f0038b15c5b768eb10771f344d9",
+    "namedTest": "DM padding chains every actual AES block",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "fixed point uses encryption",
+    "sourceDiff": "diff --git a/src/blockcipher/dm.ts b/src/blockcipher/dm.ts\nindex c03e237..ae6bf1d 100644\n--- a/src/blockcipher/dm.ts\n+++ b/src/blockcipher/dm.ts\n@@ -23,7 +23,7 @@ export function daviesMeyer(k:Uint8Array,x:Uint8Array):Uint8Array{return compres\n /** Deliberately broken free-start compression: the feed-forward wire is absent. */\n export function noFeedForward(k:Uint8Array,x:Uint8Array):Uint8Array{return aesEncryptBlock(k,x);}\n export function preimageNoFF(k:Uint8Array,y:Uint8Array):Uint8Array{return aesDecryptBlock(k,y);}\n-export function fixedPoint(m:Uint8Array):Uint8Array{return aesDecryptBlock(m,new Uint8Array(16));}\n+export function fixedPoint(m:Uint8Array):Uint8Array{return aesEncryptBlock(m,new Uint8Array(16));}\n export function padZeroFill(message:Uint8Array):Uint8Array{const out=new Uint8Array(Math.ceil(message.length/16)*16);out.set(message);return out;}\n export function padKL63(message:Uint8Array):Uint8Array {\n   const out=new Uint8Array(Math.ceil((message.length+1+8)/16)*16);out.set(message);out[message.length]=0x80;\n",
+    "baseline": "8b04b51bfbe42c70258e5c1f16bff7e57d5b211f4f5442a53ef8bbe05cf9baee",
+    "mutant": "2cd1b1c5269a45da452ce2200fc12a9d1a60c82cddef4ac03a3a8100f706d07d",
+    "namedTest": "DM fixed point is independently",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "hash verdict always collides",
+    "sourceDiff": "diff --git a/src/blockcipher/panel.ts b/src/blockcipher/panel.ts\nindex 707a9a2..c9f136d 100644\n--- a/src/blockcipher/panel.ts\n+++ b/src/blockcipher/panel.ts\n@@ -66,7 +66,7 @@ export function mountBlockCipherSection(before:HTMLElement):void {\n   point.addEventListener('click',()=>execute(fixedOut,()=>{const key=k(),p=fixedPoint(key),encrypted=aesEncryptBlock(key,p),output=daviesMeyer(key,p),holds=equalBytes(p,output)&&encrypted.every(x=>x===0);fixedOut.append(pair('Message as AES key',key,'key'),pair('x*',p,'point'),pair('AES_m(x*)',encrypted,'cipher'),pair('h(m,x*)',output,'output'),verdict(holds?'neutral':'error',holds?'FIXED POINT — a fixed point exists; reaching it from a fixed IV is the hard part.':'Fixed-point identity failed.'));}));\n   hash.addEventListener('click',()=>execute(hashOut,()=>{\n     const m=new TextEncoder().encode(message.value);if(!m.length)throw new Error('Empty message: refuse to claim a collision. Zero-fill needs a non-empty partial block.');if(m.length>4096)throw new Error(`Message limit is 4,096 UTF-8 bytes; received ${m.length}.`);\n-    const extended=new Uint8Array(m.length+1);extended.set(m);const padding:Padding=zero.checked?'zero-fill':'kl-6.3',a=mdHash(m,{padding}),b=mdHash(extended,{padding}),collision=equalBytes(a.digest,b.digest);\n+    const extended=new Uint8Array(m.length+1);extended.set(m);const padding:Padding=zero.checked?'zero-fill':'kl-6.3',a=mdHash(m,{padding}),b=mdHash(extended,{padding}),collision=true;\n     hashOut.append(pair('Message bytes m',m,'message'),pair('Message bytes m‖00',extended,'extended'),pair('H(m)',a.digest,'digest-a'),pair('H(m‖00)',b.digest,'digest-b'),\n       verdict(collision?'alarm':'held',collision?'EVERY BLOCK CORRECT — AND COLLIDING':padding==='kl-6.3'?'HELD — lengths differ, last blocks differ; these digests differ.':'NO COLLISION — the appended zero adds a whole block; try a non-aligned message length.'),\n       el('p',{},`${m.length} bytes → ${a.blocks.length} AES calls; ${extended.length} bytes → ${b.blocks.length} AES calls.`),diff(a.digest,b.digest),trace(a,'m'),trace(b,'m‖00'));\n",
+    "baseline": "8b04b51bfbe42c70258e5c1f16bff7e57d5b211f4f5442a53ef8bbe05cf9baee",
+    "mutant": "ea40253f422d8c0c7eff66635b913091348a9dee29a3f1e860b3ede09cea9451",
+    "namedTest": "DM padding chains every actual AES block",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "broken preimage painted held",
+    "sourceDiff": "diff --git a/src/blockcipher/panel.ts b/src/blockcipher/panel.ts\nindex 707a9a2..6a26122 100644\n--- a/src/blockcipher/panel.ts\n+++ b/src/blockcipher/panel.ts\n@@ -60,7 +60,7 @@ export function mountBlockCipherSection(before:HTMLElement):void {\n   calculate.addEventListener('click',()=>execute(compressionOut,()=>{const key=k(),input=parseBlock(x.input.value,'Chaining value x'),encrypted=aesEncryptBlock(key,input),output=daviesMeyer(key,input);compressionOut.append(pair('Message as AES key',key,'key'),pair('F_k(x)',encrypted,'cipher'),pair('Feed-forward x',input,'x'),pair('h(k,x) = F_k(x) XOR x',output,'output'),verdict('neutral','Compression computed: 256 input bits → 128 output bits.'));}));\n   find.addEventListener('click',()=>execute(preimageOut,()=>{const key=k(),target=parseBlock(y.input.value,'Target y'),input=preimageNoFF(key,target),cipher=noFeedForward(key,input),output=feed.checked?daviesMeyer(key,input):cipher,hit=equalBytes(output,target);\n     preimageOut.append(pair('Message as AES key',key,'key'),pair('x = AES decrypt of y',input,'x'),pair('Re-encrypted AES output',cipher,'cipher'),pair('Target y',target,'target'),pair('Recomputed compression',output,'output'),\n-      verdict(!feed.checked&&hit?'alarm':hit?'neutral':'held',!feed.checked&&hit?'FREE-START PREIMAGE FOUND — one AES decryption.':hit?'ZERO-INPUT EXCEPTION — x is all zero, so XOR changes nothing; this target is still hit.':'HELD — decryption alone did not invert Davies–Meyer for this target.'),\n+      verdict(!feed.checked&&hit?'held':hit?'neutral':'held',!feed.checked&&hit?'FREE-START PREIMAGE FOUND — one AES decryption.':hit?'ZERO-INPUT EXCEPTION — x is all zero, so XOR changes nothing; this target is still hit.':'HELD — decryption alone did not invert Davies–Meyer for this target.'),\n       el('p',{},'With feed-forward, the unknown x appears both inside AES and outside it. The simple inverse trick is not a general inversion method; x = 0 is a real special case.'));\n   }));\n   point.addEventListener('click',()=>execute(fixedOut,()=>{const key=k(),p=fixedPoint(key),encrypted=aesEncryptBlock(key,p),output=daviesMeyer(key,p),holds=equalBytes(p,output)&&encrypted.every(x=>x===0);fixedOut.append(pair('Message as AES key',key,'key'),pair('x*',p,'point'),pair('AES_m(x*)',encrypted,'cipher'),pair('h(m,x*)',output,'output'),verdict(holds?'neutral':'error',holds?'FIXED POINT — a fixed point exists; reaching it from a fixed IV is the hard part.':'Fixed-point identity failed.'));}));\n",
+    "baseline": "8b04b51bfbe42c70258e5c1f16bff7e57d5b211f4f5442a53ef8bbe05cf9baee",
+    "mutant": "53fd4a63ab0aee7296840592932081a2ebe1257310904ac1710f3d87738d9e6b",
+    "namedTest": "DM free-start inverse attack",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "chosen IV ignored",
+    "sourceDiff": "diff --git a/src/blockcipher/panel.ts b/src/blockcipher/panel.ts\nindex 707a9a2..159c63d 100644\n--- a/src/blockcipher/panel.ts\n+++ b/src/blockcipher/panel.ts\n@@ -76,7 +76,7 @@ export function mountBlockCipherSection(before:HTMLElement):void {\n   chosen.addEventListener('click',()=>execute(chosenOut,()=>{\n     const key=k(),iv=fixedPoint(key);chosenOut.append(pair('Chosen IV = x* for k',iv,'chosen-iv'),pair('Repeated 16-byte message block',key,'key'));\n     for(const padding of ['zero-fill','kl-6.3'] as const){\n-      const box=el('div',{'data-padding':padding}),results=[1,2,3].map(n=>{const m=new Uint8Array(16*n);for(let i=0;i<n;i++)m.set(key,16*i);return mdHash(m,{padding,iv});});\n+      const box=el('div',{'data-padding':padding}),results=[1,2,3].map(n=>{const m=new Uint8Array(16*n);for(let i=0;i<n;i++)m.set(key,16*i);return mdHash(m,{padding});});\n       const distinct=new Set(results.map(r=>hex(r.digest))).size;\n       box.append(el('h4',{},padding==='zero-fill'?'Zero-fill, chosen IV':'Construction 6.3, chosen IV'),verdict(distinct===3?'held':'alarm',`CHOSEN IV — ${distinct} distinct digest${distinct===1?'':'s'} from 1, 2 and 3 repetitions. ${padding==='zero-fill'?'The fixed point can repeat without recording the length.':'The length fields record 128, 256 and 384 bits.'}`));\n       results.forEach((r,i)=>box.append(pair(`H(k repeated ${i+1} times)`,r.digest,`repeat-${i+1}`),trace(r,`${padding}, ${i+1} repetition${i?'s':''}`)));chosenOut.append(box);\n",
+    "baseline": "8b04b51bfbe42c70258e5c1f16bff7e57d5b211f4f5442a53ef8bbe05cf9baee",
+    "mutant": "02c146f42730548bc060ff6168314c54f85b305054881bb52b20d62fa3736ee2",
+    "namedTest": "DM chosen-IV repeated-block",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "fixed point painted held",
+    "sourceDiff": "diff --git a/src/blockcipher/panel.ts b/src/blockcipher/panel.ts\nindex 707a9a2..6c70a6e 100644\n--- a/src/blockcipher/panel.ts\n+++ b/src/blockcipher/panel.ts\n@@ -63,7 +63,7 @@ export function mountBlockCipherSection(before:HTMLElement):void {\n       verdict(!feed.checked&&hit?'alarm':hit?'neutral':'held',!feed.checked&&hit?'FREE-START PREIMAGE FOUND — one AES decryption.':hit?'ZERO-INPUT EXCEPTION — x is all zero, so XOR changes nothing; this target is still hit.':'HELD — decryption alone did not invert Davies–Meyer for this target.'),\n       el('p',{},'With feed-forward, the unknown x appears both inside AES and outside it. The simple inverse trick is not a general inversion method; x = 0 is a real special case.'));\n   }));\n-  point.addEventListener('click',()=>execute(fixedOut,()=>{const key=k(),p=fixedPoint(key),encrypted=aesEncryptBlock(key,p),output=daviesMeyer(key,p),holds=equalBytes(p,output)&&encrypted.every(x=>x===0);fixedOut.append(pair('Message as AES key',key,'key'),pair('x*',p,'point'),pair('AES_m(x*)',encrypted,'cipher'),pair('h(m,x*)',output,'output'),verdict(holds?'neutral':'error',holds?'FIXED POINT — a fixed point exists; reaching it from a fixed IV is the hard part.':'Fixed-point identity failed.'));}));\n+  point.addEventListener('click',()=>execute(fixedOut,()=>{const key=k(),p=fixedPoint(key),encrypted=aesEncryptBlock(key,p),output=daviesMeyer(key,p),holds=equalBytes(p,output)&&encrypted.every(x=>x===0);fixedOut.append(pair('Message as AES key',key,'key'),pair('x*',p,'point'),pair('AES_m(x*)',encrypted,'cipher'),pair('h(m,x*)',output,'output'),verdict(holds?'held':'error',holds?'FIXED POINT — a fixed point exists; reaching it from a fixed IV is the hard part.':'Fixed-point identity failed.'));}));\n   hash.addEventListener('click',()=>execute(hashOut,()=>{\n     const m=new TextEncoder().encode(message.value);if(!m.length)throw new Error('Empty message: refuse to claim a collision. Zero-fill needs a non-empty partial block.');if(m.length>4096)throw new Error(`Message limit is 4,096 UTF-8 bytes; received ${m.length}.`);\n     const extended=new Uint8Array(m.length+1);extended.set(m);const padding:Padding=zero.checked?'zero-fill':'kl-6.3',a=mdHash(m,{padding}),b=mdHash(extended,{padding}),collision=equalBytes(a.digest,b.digest);\n",
+    "baseline": "8b04b51bfbe42c70258e5c1f16bff7e57d5b211f4f5442a53ef8bbe05cf9baee",
+    "mutant": "6236e7f83f19c1ec31da1ba5caedbba8982def3115b337804249b54c62a125b0",
+    "namedTest": "DM fixed point is independently",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  },
+  {
+    "name": "missing negative claim",
+    "sourceDiff": "diff --git a/src/blockcipher/panel.ts b/src/blockcipher/panel.ts\nindex 707a9a2..c26337e 100644\n--- a/src/blockcipher/panel.ts\n+++ b/src/blockcipher/panel.ts\n@@ -1,6 +1,6 @@\n import { aesEncryptBlock, daviesMeyer, equalBytes, fixedPoint, FIXED_IV, hex, mdHash, noFeedForward, parseBlock, preimageNoFF, type MDResult, type Padding } from './dm';\n \n-export const DM_NEGATIVE_CLAIM='A compression function built from a sound block cipher does not make the hash collision-resistant if the padding is ambiguous.';\n+export const DM_NEGATIVE_CLAIM='';\n type Child=Node|string;\n function el<K extends keyof HTMLElementTagNameMap>(tag:K,attrs:Record<string,string>={},...children:Child[]):HTMLElementTagNameMap[K]{const node=document.createElement(tag);for(const[k,v]of Object.entries(attrs))node.setAttribute(k,v);node.append(...children);return node;}\n function field(id:string,label:string,value:string):{input:HTMLInputElement;wrap:HTMLElement}{const input=el('input',{id,type:'text',value,spellcheck:'false',autocomplete:'off'});return {input,wrap:el('div',{class:'dm-field'},el('label',{for:id},label),input)};}\n",
+    "baseline": "8b04b51bfbe42c70258e5c1f16bff7e57d5b211f4f5442a53ef8bbe05cf9baee",
+    "mutant": "23ef66ca970af94af318ef0a0f909e3b443f52e16c092a2a593467f79e71b808",
+    "namedTest": "DM padding chains every actual AES block",
+    "assertionFailure": true,
+    "retries": 0,
+    "servedAssetGuard": true,
+    "restoredGreen": true
+  }
+]

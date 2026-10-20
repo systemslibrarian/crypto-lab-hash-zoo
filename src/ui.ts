@@ -1,3 +1,4 @@
+import { mountBlockCipherSection } from './blockcipher/panel';
 import { describeBitFlip, inputBitStrip, maxBitPosition } from './avalanche';
 import {
   avalancheAnalysis,
@@ -359,7 +360,7 @@ function buildAppHtml(): string {
         <p>SHA-256 processes the padded message one 512-bit block at a time. Each block updates a running <span class="term">chaining value <span class="term-def">(the state carried from block to block)</span></span> that starts from a fixed <span class="term">IV <span class="term-def">(initialization vector — a constant starting value)</span></span>. The final chaining value <em>is</em> the digest, which is exactly why bare Merkle-Damgard leaks enough state for a length-extension attack. HMAC-SHA256 stays safe because the secret key is mixed on both an inner and an outer pass, so the tag is not a resumable state.</p>
         <details class="advanced">
           <summary>Advanced</summary>
-          <p>The block compression uses a <span class="term">Davies-Meyer <span class="term-def">(build a compression function from a block cipher, feeding the previous state back in)</span></span> construction over 64 rounds, with IV and round constants taken from the fractional parts of square roots and cube roots of the first primes.</p>
+          <p>The block compression uses a <a href="#blockcipher-section">Davies–Meyer-style construction</a>: the 64-round block cipher’s output is added, word by word mod 2³², to the previous chaining value, with IV and round constants taken from the fractional parts of square roots and cube roots of the first primes.</p>
         </details>
       </div>
       <div class="tab-panel" role="tabpanel" id="panel-sponge" aria-labelledby="tab-sponge" data-panel="sponge">
@@ -617,6 +618,7 @@ export function initHashZoo(): void {
   }
 
   app.innerHTML = buildAppHtml();
+  mountBlockCipherSection(app.querySelector<HTMLElement>('#info-panel')!);
 
   // Inline jargon definitions are revealed on :hover/:focus-within. Without a
   // tab stop the .term span can never receive focus, so keyboard-only users
