@@ -166,7 +166,7 @@ function buildAppHtml(): string {
       </div>
       <aside class="cl-hero-why" aria-label="Why it matters">
         <span class="cl-hero-why-label">WHY IT MATTERS</span>
-        <p class="cl-hero-why-text">Hashes anchor passwords, file integrity, signatures, and blockchains. A strong avalanche is what makes them collision-resistant and hard to forge — and choosing the right construction decides whether you also dodge length-extension attacks.</p>
+        <p class="cl-hero-why-text">Hashes support file checks, signatures, and blockchains. Watch a one-bit input change spread across a digest, then try a length-extension attack. Avalanche illustrates diffusion; it does not prove collision resistance or authenticate a message.</p>
       </aside>
     </header>
 
@@ -269,7 +269,7 @@ function buildAppHtml(): string {
 
     <section class="panel" id="construction-section">
       <h2>Section C - Construction Comparison</h2>
-      <p class="section-lead">Same 256-bit output, three different internal machines. The single most consequential difference: what the final digest reveals about the hash's <em>internal state</em>. Merkle-Damgard publishes its whole state as the digest — so an attacker can resume from it. The sponge withholds a secret <span class="term">capacity <span class="term-def">(the part of the state never exposed in the output)</span></span> lane, so they can't.</p>
+      <p class="section-lead">Same 256-bit output, three different internal machines. The single most consequential difference: what the final digest reveals about the hash's <em>internal state</em>. Merkle-Damgard publishes its whole state as the digest — so an attacker can resume from it. The sponge withholds an internal <span class="term">capacity <span class="term-def">(the part of the state never exposed in the output)</span></span> lane, so they can't.</p>
       <div class="diagram-row">
         <article class="diagram-card">
           <h3>SHA-256 (Merkle-Damgaard)</h3>
@@ -293,7 +293,7 @@ function buildAppHtml(): string {
           <h3>SHA-3 (Sponge)</h3>
           <svg viewBox="0 0 520 190" role="img" aria-labelledby="sponge-title sponge-desc">
             <title id="sponge-title">SHA-3 sponge construction</title>
-            <desc id="sponge-desc">Input is absorbed into a 1600-bit state split into a 1088-bit rate and a 512-bit capacity, then output is squeezed out. Because attackers never see the secret capacity portion, the sponge resists length-extension attacks by design.</desc>
+            <desc id="sponge-desc">Input is absorbed into a 1600-bit state split into a 1088-bit rate and a 512-bit capacity, then output is squeezed out. The digest does not expose the capacity portion, so it does not provide the complete state needed for this length-extension attack.</desc>
             <rect x="16" y="70" width="90" height="40" rx="8"/><text x="61" y="95">Message</text>
             <rect x="132" y="70" width="120" height="40" rx="8"/><text x="192" y="95">Absorb</text>
             <!-- The divider sits at 1088/1600 of the box height, so the picture
@@ -344,7 +344,7 @@ function buildAppHtml(): string {
           <button id="lext-btn" type="button">Forge extended hash</button>
         </div>
         <div id="lext-result" class="lext-result" aria-live="polite"></div>
-        <p class="mini-note lext-defense"><strong>The fix:</strong> don't use bare <code>SHA-256(secret ‖ message)</code> as a MAC. Use <span class="term">HMAC <span class="term-def">(keyed hash that mixes the secret on an inner and an outer pass, so the published tag is not a resumable internal state)</span></span>, or a sponge/tree hash (SHA-3, BLAKE3) whose digest withholds internal state. The sponge diagram above shows the withheld capacity lane that makes this same attack impossible.</p>
+        <p class="mini-note lext-defense"><strong>The fix:</strong> don't use bare <code>SHA-256(secret ‖ message)</code> as a MAC. Use <span class="term">HMAC <span class="term-def">(keyed hash that mixes the secret on an inner and an outer pass, so the published tag is not a resumable internal state)</span></span>, KMAC, or BLAKE3's keyed mode, and verify the tag before acting on the message. Plain SHA3-256 or unkeyed BLAKE3 does not authenticate a sender; resisting this length-extension attack alone does not establish a secure MAC.</p>
       </div>
     </section>
 
@@ -379,11 +379,11 @@ function buildAppHtml(): string {
       </div>
       <div class="tab-panel" role="tabpanel" id="panel-choose" aria-labelledby="tab-choose" data-panel="choose">
         <ul>
-          <li>Integrity check, fast: BLAKE3</li>
+          <li>File fingerprint: BLAKE3; authenticate the expected digest separately</li>
           <li>Password hashing: Argon2id (not these hash functions)</li>
-          <li>HMAC/PRF: SHA-256 or SHA-3 (BLAKE3 is also viable)</li>
+          <li>Message authentication: HMAC-SHA256, KMAC, or BLAKE3 keyed mode</li>
           <li>NIST compliance required: SHA-256 or SHA-3</li>
-          <li>Length extension concern without HMAC: SHA-3 or BLAKE3</li>
+          <li>Length-extension resistance does not make an unkeyed hash a MAC</li>
         </ul>
       </div>
       <details>
