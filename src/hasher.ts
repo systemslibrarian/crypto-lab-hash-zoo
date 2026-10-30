@@ -1,6 +1,6 @@
 import { blake3 } from '@noble/hashes/blake3.js';
 import { sha256, _SHA256 } from '@noble/hashes/sha2.js';
-import { sha3_256 } from '@noble/hashes/sha3.js';
+import { sha3_256, keccak_256 } from '@noble/hashes/sha3.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
 export interface HashDetail {
@@ -12,6 +12,7 @@ export interface HashDetail {
 export interface HashResults {
   sha256: HashDetail;
   sha3: HashDetail;
+  keccak: HashDetail;
   blake3: HashDetail;
 }
 
@@ -28,6 +29,7 @@ export interface AvalancheResult {
   bitPosition: number;
   sha256: AvalanchePerAlgorithm;
   sha3: AvalanchePerAlgorithm;
+  keccak: AvalanchePerAlgorithm;
   blake3: AvalanchePerAlgorithm;
 }
 
@@ -112,22 +114,24 @@ function analyzePair(original: Uint8Array, changed: Uint8Array): AvalanchePerAlg
 }
 
 /**
- * The three hash functions the zoo compares, exported so tests can assert the
+ * The four hash functions the zoo compares, exported so tests can assert the
  * wiring against known-answer test vectors. A swapped or renamed import would
  * change these digests and fail the KAT suite instead of shipping silently.
  */
-export const HASH_FUNCTIONS: Record<'sha256' | 'sha3' | 'blake3', (message: Uint8Array) => Uint8Array> = {
+export const HASH_FUNCTIONS: Record<'sha256' | 'sha3' | 'keccak' | 'blake3', (message: Uint8Array) => Uint8Array> = {
   sha256,
   sha3: sha3_256,
+  keccak: keccak_256,
   blake3,
 };
 
 /** Pure digests with no timing, for testing and reuse. */
-export function digestAll(message: string): Record<'sha256' | 'sha3' | 'blake3', string> {
+export function digestAll(message: string): Record<'sha256' | 'sha3' | 'keccak' | 'blake3', string> {
   const messageBytes = encoder.encode(message);
   return {
     sha256: bytesToHex(HASH_FUNCTIONS.sha256(messageBytes)),
     sha3: bytesToHex(HASH_FUNCTIONS.sha3(messageBytes)),
+    keccak: bytesToHex(HASH_FUNCTIONS.keccak(messageBytes)),
     blake3: bytesToHex(HASH_FUNCTIONS.blake3(messageBytes)),
   };
 }
@@ -137,6 +141,7 @@ export function hashAll(message: string): HashResults {
   return {
     sha256: avgTimedHash(messageBytes, HASH_FUNCTIONS.sha256),
     sha3: avgTimedHash(messageBytes, HASH_FUNCTIONS.sha3),
+    keccak: avgTimedHash(messageBytes, HASH_FUNCTIONS.keccak),
     blake3: avgTimedHash(messageBytes, HASH_FUNCTIONS.blake3),
   };
 }
@@ -151,6 +156,9 @@ export function avalancheAnalysis(message: string, bitPosition: number): Avalanc
   const sha3Original = sha3_256(originalBytes);
   const sha3Flipped = sha3_256(flippedBytes);
 
+  const keccakOriginal = keccak_256(originalBytes);
+  const keccakFlipped = keccak_256(flippedBytes);
+
   const blake3Original = blake3(originalBytes);
   const blake3Flipped = blake3(flippedBytes);
 
@@ -159,6 +167,7 @@ export function avalancheAnalysis(message: string, bitPosition: number): Avalanc
     bitPosition,
     sha256: analyzePair(sha256Original, sha256Flipped),
     sha3: analyzePair(sha3Original, sha3Flipped),
+    keccak: analyzePair(keccakOriginal, keccakFlipped),
     blake3: analyzePair(blake3Original, blake3Flipped),
   };
 }
@@ -328,7 +337,7 @@ export const DIST_MAX_BITS = 4096; // cap work: sample at most this many input b
 
 export function avalancheDistribution(
   message: string,
-  algo: 'sha256' | 'sha3' | 'blake3',
+  algo: 'sha256' | 'sha3' | 'keccak' | 'blake3',
   bucketCount = 20,
 ): AvalancheDistribution {
   const fn = HASH_FUNCTIONS[algo];

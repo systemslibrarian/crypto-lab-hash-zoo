@@ -68,6 +68,10 @@ function makeHashRows(results: HashResults): string {
         <div class="hex-wrap">${renderByteSpans(results.sha3.hex)}</div>
         <button class="copy-btn" type="button" data-copy="${results.sha3.hex}" aria-label="Copy SHA3-256 hash">Copy</button>
       </td>
+      <td data-label="Keccak-256">
+        <div class="hex-wrap">${renderByteSpans(results.keccak.hex)}</div>
+        <button class="copy-btn" type="button" data-copy="${results.keccak.hex}" aria-label="Copy Keccak-256 hash">Copy</button>
+      </td>
       <td data-label="BLAKE3">
         <div class="hex-wrap">${renderByteSpans(results.blake3.hex)}</div>
         <button class="copy-btn" type="button" data-copy="${results.blake3.hex}" aria-label="Copy BLAKE3 hash">Copy</button>
@@ -77,18 +81,21 @@ function makeHashRows(results: HashResults): string {
       <th scope="row">Output size</th>
       <td data-label="SHA-256">256 bits</td>
       <td data-label="SHA3-256">256 bits</td>
+      <td data-label="Keccak-256">256 bits</td>
       <td data-label="BLAKE3">256 bits</td>
     </tr>
     <tr>
       <th scope="row">Internal state <span class="th-note">(running memory between blocks)</span></th>
       <td data-label="SHA-256">256-bit chaining value <span class="td-note">(all of it is published as the digest)</span></td>
       <td data-label="SHA3-256">1600-bit state, split 1088 rate | 512 capacity <span class="td-note">(the 512 stays hidden)</span></td>
+      <td data-label="Keccak-256">1600-bit state, split 1088 rate | 512 capacity <span class="td-note">(same split as SHA3-256)</span></td>
       <td data-label="BLAKE3">256-bit chaining value per tree node</td>
     </tr>
     <tr>
       <th scope="row">Construction <span class="th-note">(how blocks are combined)</span></th>
       <td data-label="SHA-256">Merkle-Damgard <span class="td-note">(one block after another)</span></td>
       <td data-label="SHA3-256">Sponge <span class="td-note">(absorb then squeeze)</span></td>
+      <td data-label="Keccak-256">Sponge <span class="td-note">(different suffix from SHA3-256)</span></td>
       <td data-label="BLAKE3">Binary tree <span class="td-note">(leaves combined in parallel)</span></td>
     </tr>
   `;
@@ -99,6 +106,7 @@ function makeTimingHtml(results: HashResults): string {
     <div class="timing-grid">
       <div class="timing-cell"><span class="timing-algo">SHA-256</span><span class="timing-num">${formatMicros(results.sha256.timeMs)}</span></div>
       <div class="timing-cell"><span class="timing-algo">SHA3-256</span><span class="timing-num">${formatMicros(results.sha3.timeMs)}</span></div>
+      <div class="timing-cell"><span class="timing-algo">Keccak-256</span><span class="timing-num">${formatMicros(results.keccak.timeMs)}</span></div>
       <div class="timing-cell"><span class="timing-algo">BLAKE3</span><span class="timing-num">${formatMicros(results.blake3.timeMs)}</span></div>
     </div>
   `;
@@ -161,7 +169,7 @@ function buildAppHtml(): string {
     <header class="cl-hero">
       <div class="cl-hero-main">
         <h1 class="cl-hero-title">Hash Zoo</h1>
-        <p class="cl-hero-sub">SHA-256 · SHA3-256 · BLAKE3</p>
+        <p class="cl-hero-sub">SHA-256 · SHA3-256 · Keccak-256 · BLAKE3</p>
         <p class="cl-hero-desc">Hashes the same message through Merkle-Damgard, sponge, and tree constructions side-by-side, then flips a single input bit so you can watch each design's avalanche scatter across the output.</p>
       </div>
       <aside class="cl-hero-why" aria-label="Why it matters">
@@ -191,21 +199,22 @@ function buildAppHtml(): string {
 
     <section class="panel" id="hash-comparison">
       <h2>Section A - Hash Comparison</h2>
-      <p class="section-lead">Now the three-way comparison. Each column is a real hash function computing a 256-bit digest of your message in your browser. They look like the same kind of random noise, yet they are built completely differently (Sections C and the info panel unpack how).</p>
+      <p class="section-lead">Four hash functions, three construction families. Each column computes a real 256-bit digest of the same message in your browser. SHA3-256 and Keccak-256 share the same sponge design, but use different input suffixes. Compare their outputs below; Sections C and the info panel explain the constructions.</p>
       <label for="message-input">Message</label>
       <textarea id="message-input" rows="4">${defaultMessage}</textarea>
       <div class="button-row">
-        <button id="hash-btn" type="button">Hash All Three</button>
+        <button id="hash-btn" type="button">Hash All Four</button>
         <button id="padding-btn" class="ghost-btn" type="button">Padding info</button>
       </div>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Hash comparison results">
         <table aria-label="Hash comparison results">
-          <caption class="sr-only">Side-by-side comparison of SHA-256, SHA3-256, and BLAKE3</caption>
+          <caption class="sr-only">Side-by-side comparison of SHA-256, SHA3-256, Keccak-256, and BLAKE3</caption>
           <thead>
             <tr>
               <td></td>
               <th scope="col">SHA-256</th>
               <th scope="col">SHA3-256</th>
+              <th scope="col">Keccak-256</th>
               <th scope="col">BLAKE3</th>
             </tr>
           </thead>
@@ -213,10 +222,21 @@ function buildAppHtml(): string {
         </table>
       </div>
       <p class="consistency">Same input -> same output.</p>
+      <aside class="hash-note" aria-labelledby="keccak-heading">
+        <h3 id="keccak-heading">Keccak-256 and SHA3-256: same engine, different fingerprints</h3>
+        <p>Both use Keccak-f[1600], a 1088-bit rate, a 512-bit capacity, and a 256-bit output. SHA3-256 adds a domain-separation suffix before padding; original Keccak-256 does not use that SHA-3 suffix. That small input change gives different digests for the same message. They are distinct functions, not interchangeable names.</p>
+        <p><strong>Try it:</strong> enter <code>abc</code> above, then clear the message. Compare the two columns each time. Ethereum uses original Keccak-256; a protocol asking for it will not accept a SHA3-256 digest in its place.</p>
+        <details class="advanced">
+          <summary>See the suffix bytes and sources</summary>
+          <p>For byte-aligned messages, the combined suffix and first padding bits are encoded as <code>0x01</code> for Keccak-256 and <code>0x06</code> for SHA3-256. These are padding encodings, not bytes to append manually to the text field.</p>
+          <p>Sources: <a href="https://keccak.team/keccak_specs_summary.html" target="_blank" rel="noreferrer">Keccak Team specification summary</a> and <a href="https://ethereum.org/en/developers/docs/data-structures-and-encoding/patricia-merkle-trie/" target="_blank" rel="noreferrer">Ethereum's Keccak-256 usage</a>.</p>
+        </details>
+      </aside>
+      <p class="hash-note legacy-hashes"><strong>Looking for MD5 and SHA-1?</strong> <a href="https://systemslibrarian.github.io/crypto-lab-collision-vault/">Open Collision Vault</a> to verify published collision pairs: different files with the same digest. Both have broken collision resistance; they are historical lessons, not choices for new collision-resistant designs.</p>
       <details class="timing-details">
         <summary>Show indicative timing (not a benchmark)</summary>
         <div id="timing-grid-host"></div>
-        <p class="timing-note">In-browser average over 100 iterations, in microseconds. Indicative only: JIT warmup, garbage collection, CPU throttling, and other tabs make single-digit-microsecond numbers noisy, so treat them as a rough feel for relative cost rather than a benchmark. Expect SHA-256 to win here: browsers run a portable single-threaded JavaScript BLAKE3 with no SIMD and no threads, which is precisely the two things BLAKE3's speed comes from — so Section C's "fastest of the three" is a claim about an optimised native build, not about this loop. For a real comparison, measure a native build (for example <code>b3sum</code> vs <code>openssl</code>) on large inputs.</p>
+        <p class="timing-note">In-browser average over 100 iterations, in microseconds. Indicative only: JIT warmup, garbage collection, CPU throttling, and other tabs make small measurements noisy. This loop uses portable single-threaded JavaScript. It cannot demonstrate BLAKE3's native parallel speed advantage from SIMD and multiple threads. For a real comparison, measure native builds on large inputs; do not infer a universal speed ranking from this table.</p>
       </details>
     </section>
 
@@ -259,6 +279,7 @@ function buildAppHtml(): string {
           <select id="dist-algo">
             <option value="sha256">SHA-256</option>
             <option value="sha3">SHA3-256</option>
+            <option value="keccak">Keccak-256</option>
             <option value="blake3">BLAKE3</option>
           </select>
           <button id="dist-btn" type="button">Run every-bit sweep</button>
@@ -269,7 +290,7 @@ function buildAppHtml(): string {
 
     <section class="panel" id="construction-section">
       <h2>Section C - Construction Comparison</h2>
-      <p class="section-lead">Same 256-bit output, three different internal machines. The single most consequential difference: what the final digest reveals about the hash's <em>internal state</em>. Merkle-Damgard publishes its whole state as the digest — so an attacker can resume from it. The sponge withholds an internal <span class="term">capacity <span class="term-def">(the part of the state never exposed in the output)</span></span> lane, so they can't.</p>
+      <p class="section-lead">Four 256-bit hashes, three construction families: SHA3-256 and Keccak-256 share the sponge. The single most consequential difference: what the final digest reveals about the hash's <em>internal state</em>. Merkle-Damgard publishes its whole state as the digest — so an attacker can resume from it. The sponge withholds an internal <span class="term">capacity <span class="term-def">(the part of the state never exposed in the output)</span></span> lane, so they can't.</p>
       <div class="diagram-row">
         <article class="diagram-card">
           <h3>SHA-256 (Merkle-Damgaard)</h3>
@@ -290,9 +311,9 @@ function buildAppHtml(): string {
         </article>
 
         <article class="diagram-card">
-          <h3>SHA-3 (Sponge)</h3>
+          <h3>SHA3-256 / Keccak-256 (Sponge)</h3>
           <svg viewBox="0 0 520 190" role="img" aria-labelledby="sponge-title sponge-desc">
-            <title id="sponge-title">SHA-3 sponge construction</title>
+            <title id="sponge-title">SHA3-256 and Keccak-256 sponge construction</title>
             <desc id="sponge-desc">Input is absorbed into a 1600-bit state split into a 1088-bit rate and a 512-bit capacity, then output is squeezed out. The digest does not expose the capacity portion, so it does not provide the complete state needed for this length-extension attack.</desc>
             <rect x="16" y="70" width="90" height="40" rx="8"/><text x="61" y="95">Message</text>
             <rect x="132" y="70" width="120" height="40" rx="8"/><text x="192" y="95">Absorb</text>
@@ -308,14 +329,14 @@ function buildAppHtml(): string {
             <line x1="278" y1="150" x2="252" y2="150"/><line x1="132" y1="150" x2="106" y2="150"/>
             <text x="26" y="155">256-bit out</text>
           </svg>
-          <p>No length extension. Rate/capacity trade-off.</p>
+          <p>Both withhold the capacity from the digest. Different suffixes separate SHA3-256 from Keccak-256.</p>
         </article>
 
         <article class="diagram-card">
           <h3>BLAKE3 (Tree)</h3>
           <svg viewBox="0 0 520 190" role="img" aria-labelledby="tree-title tree-desc">
             <title id="tree-title">BLAKE3 binary tree construction</title>
-            <desc id="tree-desc">The message is divided into 1024-byte leaf chunks hashed independently, then pairs of chaining values are combined up a binary tree to a single root hash. Independent leaves can be hashed in parallel across CPU cores and SIMD lanes, which is what makes an optimised native BLAKE3 build the fastest of the three. This page cannot show that: its BLAKE3 is single-threaded portable JavaScript with no SIMD, and the timing panel in Section A measures it slower than SHA-256.</desc>
+            <desc id="tree-desc">The message is divided into 1024-byte leaf chunks hashed independently, then pairs of chaining values are combined up a binary tree to a single root hash. Independent leaves enable a native parallel speed advantage using CPU cores and SIMD lanes. This page uses single-threaded portable JavaScript, so it does not measure that advantage.</desc>
             <circle cx="60" cy="150" r="14"/><circle cx="150" cy="150" r="14"/>
             <circle cx="240" cy="150" r="14"/><circle cx="330" cy="150" r="14"/>
             <circle cx="105" cy="100" r="14"/><circle cx="285" cy="100" r="14"/>
@@ -325,7 +346,7 @@ function buildAppHtml(): string {
             <line x1="105" y1="86" x2="195" y2="66"/><line x1="285" y1="86" x2="195" y2="66"/>
             <text x="28" y="175">Leaf chunks</text><text x="158" y="28">Root hash</text>
           </svg>
-          <p>Parallelizable and SIMD-friendly — fastest of the three <em>in an optimised native build</em> (<code>b3sum</code>). Not on this page: the JavaScript BLAKE3 it runs is single-threaded and un-vectorised, and Section A's timing panel measures it slower than SHA-256.</p>
+          <p>Independent chunks allow a native parallel speed advantage using multiple threads and SIMD. This page runs single-threaded JavaScript; compare native builds on large inputs to measure that advantage.</p>
         </article>
       </div>
 
@@ -352,7 +373,7 @@ function buildAppHtml(): string {
       <h2>Info Panel</h2>
       <div class="tabs" role="tablist" aria-label="Hash construction info">
         <button class="tab is-active" role="tab" aria-selected="true" aria-controls="panel-md" id="tab-md" data-tab="md">Merkle-Damgaard (SHA-256)</button>
-        <button class="tab" role="tab" aria-selected="false" aria-controls="panel-sponge" id="tab-sponge" data-tab="sponge">Sponge Construction (SHA-3)</button>
+        <button class="tab" role="tab" aria-selected="false" aria-controls="panel-sponge" id="tab-sponge" data-tab="sponge">Sponge (SHA-3 / Keccak)</button>
         <button class="tab" role="tab" aria-selected="false" aria-controls="panel-tree" id="tab-tree" data-tab="tree">Tree Hashing (BLAKE3)</button>
         <button class="tab" role="tab" aria-selected="false" aria-controls="panel-choose" id="tab-choose" data-tab="choose">Choosing a Hash Function</button>
       </div>
@@ -364,10 +385,10 @@ function buildAppHtml(): string {
         </details>
       </div>
       <div class="tab-panel" role="tabpanel" id="panel-sponge" aria-labelledby="tab-sponge" data-panel="sponge">
-        <p>SHA3-256 is a <span class="term">sponge <span class="term-def">(absorb input, then squeeze output, mixing a large fixed state)</span></span>. Its state is split into a <span class="term">rate <span class="term-def">(the part input touches and output comes from)</span></span> of 1088 bits and a <span class="term">capacity <span class="term-def">(a hidden reserve never exposed in the output)</span></span> of 512 bits. Because the capacity is withheld, an attacker cannot reconstruct the internal state from the digest, so the sponge resists length extension by design.</p>
+        <p>SHA3-256 and Keccak-256 each use a <span class="term">sponge <span class="term-def">(absorb input, then squeeze output, mixing a large fixed state)</span></span>. Each state is split into a <span class="term">rate <span class="term-def">(the part input touches and output comes from)</span></span> of 1088 bits and a <span class="term">capacity <span class="term-def">(a hidden reserve never exposed in the output)</span></span> of 512 bits. Because the capacity is withheld, an attacker cannot reconstruct the internal state from the digest, so the sponge resists length extension by design.</p>
         <details class="advanced">
           <summary>Advanced</summary>
-          <p>The permutation is <span class="term">Keccak-f[1600] <span class="term-def">(the 1600-bit fixed permutation applied each round)</span></span>. Rate + capacity always sum to the 1600-bit state width; the capacity size sets the security level.</p>
+          <p>The permutation is <span class="term">Keccak-f[1600] <span class="term-def">(the 1600-bit fixed permutation applied each round)</span></span>. Rate + capacity always sum to the 1600-bit state width. SHA3-256 and Keccak-256 both use 24 rounds; their input suffixes differ, not their round count. See the comparison above for the suffix encodings.</p>
         </details>
       </div>
       <div class="tab-panel" role="tabpanel" id="panel-tree" aria-labelledby="tab-tree" data-panel="tree">
@@ -382,6 +403,7 @@ function buildAppHtml(): string {
           <li>File fingerprint: BLAKE3; authenticate the expected digest separately</li>
           <li>Password hashing: Argon2id (not these hash functions)</li>
           <li>Message authentication: HMAC-SHA256, KMAC, or BLAKE3 keyed mode</li>
+          <li>Protocol compatibility: use the exact named hash; Keccak-256 and SHA3-256 cannot be substituted for each other</li>
           <li>NIST compliance required: SHA-256 or SHA-3</li>
           <li>Length-extension resistance does not make an unkeyed hash a MAC</li>
         </ul>
@@ -548,7 +570,7 @@ function ordinal(n: number): string {
 function renderDistribution(
   host: HTMLElement,
   message: string,
-  algo: 'sha256' | 'sha3' | 'blake3',
+  algo: 'sha256' | 'sha3' | 'keccak' | 'blake3',
 ): AvalancheDistribution | null {
   if (message.length === 0) {
     host.innerHTML = '<p class="empty-state">Add a message above to run the sweep.</p>';
@@ -686,6 +708,7 @@ export function initHashZoo(): void {
         `Hashed ${messageInput.value.length} characters. ` +
           `SHA-256 ${formatMicros(results.sha256.timeMs)}, ` +
           `SHA3-256 ${formatMicros(results.sha3.timeMs)}, ` +
+          `Keccak-256 ${formatMicros(results.keccak.timeMs)}, ` +
           `BLAKE3 ${formatMicros(results.blake3.timeMs)}.`,
       );
     }
@@ -721,6 +744,7 @@ export function initHashZoo(): void {
     grids.innerHTML = [
       renderGrid(result.sha256, 'sha256'),
       renderGrid(result.sha3, 'sha3-256'),
+      renderGrid(result.keccak, 'keccak-256'),
       renderGrid(result.blake3, 'blake3'),
     ].join('');
     if (options.announceResult) {
@@ -728,6 +752,7 @@ export function initHashZoo(): void {
         `Flipped bit ${bitPosition}. Output bits changed: ` +
           `SHA-256 ${result.sha256.diffPercent.toFixed(1)} percent, ` +
           `SHA3-256 ${result.sha3.diffPercent.toFixed(1)} percent, ` +
+          `Keccak-256 ${result.keccak.diffPercent.toFixed(1)} percent, ` +
           `BLAKE3 ${result.blake3.diffPercent.toFixed(1)} percent.`,
       );
     }
@@ -750,6 +775,7 @@ export function initHashZoo(): void {
       `SHA-256 padded message — ${blocks} block${blocks === 1 ? '' : 's'} of 512 bits:\n${info.sha256Padding}`,
       `SHA-3 rate: ${info.sha3Rate} bits`,
       `SHA-3 capacity: ${info.sha3Capacity} bits`,
+      `Keccak-256 uses the same rate and capacity. Byte-aligned suffix/padding encoding: Keccak-256 0x01; SHA3-256 0x06.`,
     ].join('\n\n');
     modal.showModal();
   };
@@ -797,7 +823,7 @@ export function initHashZoo(): void {
   // Avalanche distribution sweep (flip every input bit).
   if (distBtn && distAlgo && distResult) {
     distBtn.addEventListener('click', () => {
-      const algo = distAlgo.value as 'sha256' | 'sha3' | 'blake3';
+      const algo = distAlgo.value as 'sha256' | 'sha3' | 'keccak' | 'blake3';
       const d = renderDistribution(distResult, messageInput.value, algo);
       if (!d) {
         announce('Add a message above to run the sweep.');

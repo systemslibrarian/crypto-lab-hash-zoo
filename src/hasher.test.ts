@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import keccakVectors from './fixtures/keccak-vectors.json';
 import { bytesToHex } from '@noble/hashes/utils.js';
 import { sha256 } from '@noble/hashes/sha2.js';
 import {
@@ -28,17 +29,20 @@ const enc = new TextEncoder();
  *
  *   SHA-256   : FIPS 180-4
  *   SHA3-256  : FIPS 202
+ *   Keccak-256: original Keccak; independently cross-checked with PyCryptodome
  *   BLAKE3    : BLAKE3 reference test vectors
  */
 const KAT = {
   '': {
     sha256: 'e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855',
     sha3: 'a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a',
+    keccak: 'c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470',
     blake3: 'af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262',
   },
   abc: {
     sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     sha3: '3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532',
+    keccak: '4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45',
     blake3: '6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85',
   },
 } as const;
@@ -53,15 +57,14 @@ describe('known-answer test vectors (catches a swapped algorithm import)', () =>
       const results = hashAll(message);
       expect(results.sha256.hex).toBe(expected.sha256);
       expect(results.sha3.hex).toBe(expected.sha3);
+      expect(results.keccak.hex).toBe(expected.keccak);
       expect(results.blake3.hex).toBe(expected.blake3);
     });
   }
 
-  it('each of the three algorithms is distinct (not the same function under different labels)', () => {
+  it('each of the four algorithms is distinct (not the same function under different labels)', () => {
     const d = digestAll('avalanche');
-    expect(d.sha256).not.toBe(d.sha3);
-    expect(d.sha256).not.toBe(d.blake3);
-    expect(d.sha3).not.toBe(d.blake3);
+    expect(new Set(Object.values(d)).size).toBe(4);
   });
 
   it('HASH_FUNCTIONS.sha256 actually produces the SHA-256 KAT', () => {
@@ -83,7 +86,7 @@ describe('determinism and output shape', () => {
 
   it('hashAll reports a non-negative average time per algorithm', () => {
     const results = hashAll('timing');
-    for (const detail of [results.sha256, results.sha3, results.blake3]) {
+    for (const detail of [results.sha256, results.sha3, results.keccak, results.blake3]) {
       expect(detail.timeMs).toBeGreaterThanOrEqual(0);
       expect(Number.isFinite(detail.timeMs)).toBe(true);
     }
@@ -160,14 +163,14 @@ describe('diffBitmap', () => {
 });
 
 describe('avalanche effect (~50% of output bits flip on a 1-bit input change)', () => {
-  const algorithms = ['sha256', 'sha3', 'blake3'] as const;
+  const algorithms = ['sha256', 'sha3', 'keccak', 'blake3'] as const;
 
   it('flipping one input bit changes close to half the output bits for every algorithm', () => {
     const message = 'The quick brown fox jumps over the lazy dog';
     const bitCount = message.length * 8;
 
     // Average avalanche across many single-bit flips to smooth per-position noise.
-    const totals: Record<(typeof algorithms)[number], number> = { sha256: 0, sha3: 0, blake3: 0 };
+    const totals: Record<(typeof algorithms)[number], number> = { sha256: 0, sha3: 0, keccak: 0, blake3: 0 };
     const samples = 40;
     for (let s = 0; s < samples; s += 1) {
       const pos = Math.floor((s / samples) * bitCount);
@@ -255,7 +258,7 @@ describe('length extension (real SHA-256 forgery, not a mock)', () => {
 describe('avalancheDistribution (statistical ~50% law)', () => {
   it('mean output-diff over every input bit clusters near 50% for each algorithm', () => {
     const msg = 'The quick brown fox jumps over the lazy dog';
-    for (const algo of ['sha256', 'sha3', 'blake3'] as const) {
+    for (const algo of ['sha256', 'sha3', 'keccak', 'blake3'] as const) {
       const d = avalancheDistribution(msg, algo);
       expect(d.percents.length).toBe(msg.length * 8);
       expect(d.mean).toBeGreaterThan(42);
@@ -371,4 +374,16 @@ describe('paddingInfo', () => {
     const bitLen = tail.reduce((acc, byte) => acc * 256n + BigInt(byte), 0n);
     expect(bitLen).toBe(BigInt(message.length * 8));
   });
+});
+
+// Independent PyCryptodome 4.2.0 fixtures: UTF-8 and both sides of the 136-byte
+// sponge rate boundary. No @noble computation is used to build the expected values.
+describe('Keccak-256 independent fixtures', () => {
+  for (const { message, hex } of keccakVectors) {
+    it(`matches the independent digest at ${enc.encode(message).length} UTF-8 bytes`, () => {
+      const digests = digestAll(message);
+      expect(digests.keccak).toBe(hex);
+      expect(digests.keccak).not.toBe(digests.sha3);
+    });
+  }
 });

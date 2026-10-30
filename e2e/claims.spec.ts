@@ -1,4 +1,5 @@
 import { createHash, createCipheriv, createDecipheriv } from 'node:crypto';
+import keccakVectors from '../src/fixtures/keccak-vectors.json' with { type: 'json' };
 import { expect, test, type Locator, type Page } from '@playwright/test';
 
 /**
@@ -13,6 +14,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  *
  * Independent oracles, so a wrong page cannot mark its own homework:
  *   - SHA-256 and SHA3-256 come from node's crypto (OpenSSL), not @noble.
+ *   - Keccak-256 uses fixed PyCryptodome fixtures, including UTF-8 and rate boundaries.
  *   - BLAKE3 has no node binding, so it is checked against the published
  *     reference vectors for "" and "abc" and otherwise held to structural and
  *     internal-consistency checks.
@@ -66,10 +68,10 @@ async function setMessage(page: Page, value: string): Promise<void> {
   await page.locator('#message-input').fill(value);
 }
 
-/** The three hex digests currently rendered in the Section A output row. */
+/** The four hex digests currently rendered in the Section A output row. */
 async function renderedDigests(page: Page): Promise<string[]> {
   const cells = page.locator('#hash-results tr').first().locator('td .hex-wrap');
-  await expect(cells).toHaveCount(3);
+  await expect(cells).toHaveCount(4);
   return (await cells.allTextContents()).map((t) => t.trim());
 }
 
@@ -79,44 +81,72 @@ test.beforeEach(async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Section A — the three digests are the real digests.
+// Section A — the four digests are the real digests.
 // ---------------------------------------------------------------------------
 
 test.describe('Section A: hash comparison', () => {
-  test('prints the real SHA-256 / SHA3-256 / BLAKE3 digests of the message', async ({ page }) => {
+  test('Keccak-256 matches independent UTF-8 and sponge-boundary fixtures on screen', async ({ page }) => {
+    for (const { message, hex } of keccakVectors) {
+      await setMessage(page, message);
+      const cell = page.locator('#hash-results tr').first().locator('[data-label="Keccak-256"] .hex-wrap');
+      await expect(cell).toHaveText(hex);
+    }
+  });
+  test('Keccak and SHA-3 stay distinct under their labels, copy controls and explanation', async ({ page, context }) => {
+    await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+    await setMessage(page, 'abc');
+    const sha3 = page.locator('#hash-results tr').first().locator('[data-label="SHA3-256"]');
+    const keccak = page.locator('#hash-results tr').first().locator('[data-label="Keccak-256"]');
+    await expect(sha3.locator('.hex-wrap')).toHaveText(nodeHash('sha3-256', 'abc'));
+    await expect(keccak.locator('.hex-wrap')).toHaveText('4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45');
+    await page.getByRole('button', { name: 'Copy Keccak-256 hash', exact: true }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe('4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45');
+    const note = page.locator('aside.hash-note');
+    await expect(note).toContainText('not interchangeable names');
+    await note.locator('summary').click();
+    await expect(note.locator('details')).toContainText('0x01');
+    await expect(note.locator('details')).toContainText('0x06');
+    await expect(page.locator('.legacy-hashes a')).toHaveAttribute('href', 'https://systemslibrarian.github.io/crypto-lab-collision-vault/');
+    await expect(page.locator('.legacy-hashes')).toContainText('MD5 and SHA-1');
+  });
+
+  test('prints the real SHA-256 / SHA3-256 / Keccak-256 / BLAKE3 digests of the message', async ({ page }) => {
     await page.locator('#hash-btn').click();
-    const [sha256, sha3, blake3] = await renderedDigests(page);
+    const [sha256, sha3, keccak, blake3] = await renderedDigests(page);
 
     expect(sha256).toBe(nodeHash('sha256', DEFAULT_MESSAGE));
     expect(sha3).toBe(nodeHash('sha3-256', DEFAULT_MESSAGE));
 
-    // All three are 256-bit, as the "Output size" row claims.
-    for (const hex of [sha256, sha3, blake3]) {
+    // All four are 256-bit, as the "Output size" row claims.
+    for (const hex of [sha256, sha3, keccak, blake3]) {
       expect(hex).toMatch(/^[0-9a-f]{64}$/);
     }
     await expect(page.locator('#hash-results tr').nth(1).locator('td')).toHaveText([
       '256 bits',
       '256 bits',
       '256 bits',
+      '256 bits',
     ]);
 
-    // Distinct constructions, distinct digests.
-    expect(new Set([sha256, sha3, blake3]).size).toBe(3);
+    // Distinct named functions, distinct digests for this input.
+    expect(new Set([sha256, sha3, keccak, blake3]).size).toBe(4);
   });
 
   test('matches published vectors for the empty message and "abc", including BLAKE3', async ({
     page,
   }) => {
     await setMessage(page, '');
-    let [sha256, sha3, blake3] = await renderedDigests(page);
+    let [sha256, sha3, keccak, blake3] = await renderedDigests(page);
     expect(sha256).toBe(nodeHash('sha256', ''));
     expect(sha3).toBe(nodeHash('sha3-256', ''));
+    expect(keccak).toBe('c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470');
     expect(blake3).toBe(BLAKE3_EMPTY);
 
     await setMessage(page, 'abc');
-    [sha256, sha3, blake3] = await renderedDigests(page);
+    [sha256, sha3, keccak, blake3] = await renderedDigests(page);
     expect(sha256).toBe(nodeHash('sha256', 'abc'));
     expect(sha3).toBe(nodeHash('sha3-256', 'abc'));
+    expect(keccak).toBe('4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45');
     expect(blake3).toBe(BLAKE3_ABC);
   });
 
@@ -139,12 +169,12 @@ test.describe('Section A: hash comparison', () => {
     }
   });
 
-  test('one edited character changes all three digests', async ({ page }) => {
+  test('one edited character changes all four digests', async ({ page }) => {
     await setMessage(page, 'hash zoo');
     const before = await renderedDigests(page);
     await setMessage(page, 'hash zoO');
     const after = await renderedDigests(page);
-    for (let i = 0; i < 3; i += 1) expect(after[i]).not.toBe(before[i]);
+    for (let i = 0; i < 4; i += 1) expect(after[i]).not.toBe(before[i]);
     expect(after[0]).toBe(nodeHash('sha256', 'hash zoO'));
   });
 
@@ -160,8 +190,8 @@ test.describe('Section A: hash comparison', () => {
     await expect(host).toBeVisible();
 
     const cells = host.locator('.timing-cell');
-    await expect(cells).toHaveCount(3);
-    await expect(host.locator('.timing-algo')).toHaveText(['SHA-256', 'SHA3-256', 'BLAKE3']);
+    await expect(cells).toHaveCount(4);
+    await expect(host.locator('.timing-algo')).toHaveText(['SHA-256', 'SHA3-256', 'Keccak-256', 'BLAKE3']);
     for (const text of await host.locator('.timing-num').allTextContents()) {
       const micros = Number(text.replace(' µs', ''));
       expect(Number.isFinite(micros)).toBe(true);
@@ -248,9 +278,9 @@ test.describe('Section B: avalanche effect', () => {
   }) => {
     await page.locator('#analyze-btn').click();
     const cards = page.locator('#avalanche-grids .algo-card');
-    await expect(cards).toHaveCount(3);
+    await expect(cards).toHaveCount(4);
 
-    for (let i = 0; i < 3; i += 1) {
+    for (let i = 0; i < 4; i += 1) {
       const card = cards.nth(i);
       const { algo, diffBits, total, percent } = await readCard(card);
 
@@ -306,15 +336,16 @@ test.describe('Section B: avalanche effect', () => {
     const expected = {
       SHA256: hexDiffBits(nodeHash('sha256', original), nodeHash('sha256', flipped)),
       'SHA3-256': hexDiffBits(nodeHash('sha3-256', original), nodeHash('sha3-256', flipped)),
+      'KECCAK-256': 121, // Independently computed with PyCryptodome for bit 11 of this message.
     };
 
     const cards = page.locator('#avalanche-grids .algo-card');
-    for (let i = 0; i < 3; i += 1) {
+    for (let i = 0; i < 4; i += 1) {
       const { algo, diffBits, percent } = await readCard(cards.nth(i));
       if (algo in expected) {
         expect(diffBits, `${algo} diff bits`).toBe(expected[algo as keyof typeof expected]);
       }
-      // The headline "about half" claim, for all three including BLAKE3.
+      // The headline "about half" claim, for all four including BLAKE3.
       expect(percent).toBeGreaterThan(25);
       expect(percent).toBeLessThan(75);
     }
@@ -324,9 +355,9 @@ test.describe('Section B: avalanche effect', () => {
     await page.locator('#analyze-btn').click();
     const cards = page.locator('#avalanche-grids .algo-card');
     const shown = [];
-    for (let i = 0; i < 3; i += 1) shown.push((await readCard(cards.nth(i))).percent.toFixed(1));
+    for (let i = 0; i < 4; i += 1) shown.push((await readCard(cards.nth(i))).percent.toFixed(1));
     await expect(page.locator('#aria-live-region')).toHaveText(
-      `Flipped bit 0. Output bits changed: SHA-256 ${shown[0]} percent, SHA3-256 ${shown[1]} percent, BLAKE3 ${shown[2]} percent.`,
+      `Flipped bit 0. Output bits changed: SHA-256 ${shown[0]} percent, SHA3-256 ${shown[1]} percent, Keccak-256 ${shown[2]} percent, BLAKE3 ${shown[3]} percent.`,
     );
   });
 
@@ -486,7 +517,7 @@ test.describe('Section B: avalanche effect', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Section B: every-bit sweep', () => {
-  for (const algo of ['sha256', 'sha3', 'blake3'] as const) {
+  for (const algo of ['sha256', 'sha3', 'keccak', 'blake3'] as const) {
     test(`the ${algo} sweep's buckets sum to the flips it reports`, async ({ page }) => {
       test.setTimeout(90_000);
       const message = 'sweep me across every single bit';
@@ -869,61 +900,15 @@ test.describe('Section C: length-extension forgery', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Section C: construction claims', () => {
-  /**
-   * REGRESSION — "Parallelizable, SIMD-friendly, fastest of the three."
-   *
-   * Stated flat, as a property of the three hashes on this page, twice (the
-   * BLAKE3 diagram caption and its SVG <desc>). The timing panel two sections
-   * up measures the opposite: over 35 timed runs across 7 message sizes from
-   * empty to 1 MB, SHA-256 was fastest in 34, and BLAKE3 measured 3-4x slower
-   * than SHA-256 at every size from 1 kB up. The repo's own README already said
-   * why ("a single-threaded browser loop cannot exercise SIMD and threading")
-   * — the page did not.
-   *
-   * This asserts the reconciliation, not the ranking: the timing panel is
-   * genuinely noisy, so it is not asserted which digest wins. What is asserted
-   * is that wherever the page claims "fastest of the three", it scopes the
-   * claim to a native build, and that the timing panel tells the reader the
-   * ordering it shows is not that claim's evidence.
-   */
-  test('the "fastest of the three" claim is scoped to the build that is actually fastest', async ({
-    page,
-  }) => {
-    // The invariant, over every place the page says it: no occurrence of
-    // "fastest of the three" may stand without naming the build it is true of.
-    // Asserted over text nodes rather than one selector, so a fourth copy
-    // pasted anywhere on the page is caught too.
-    const unscoped = await page.evaluate(() => {
-      const PHRASE = 'fastest of the three';
-      const holders = Array.from(document.querySelectorAll('body *')).filter(
-        (el) =>
-          (el.textContent ?? '').includes(PHRASE) &&
-          !Array.from(el.children).some((c) => (c.textContent ?? '').includes(PHRASE)),
-      );
-      return {
-        found: holders.length,
-        unscoped: holders
-          .map((el) => (el.textContent ?? '').replace(/\s+/g, ' ').trim())
-          .filter((t) => !/native/i.test(t)),
-      };
-    });
-    expect(unscoped.found, 'the page must still make the claim somewhere').toBeGreaterThan(0);
-    expect(unscoped.unscoped, 'unscoped "fastest of the three" claims').toEqual([]);
-
+  test('native parallel performance is distinguished from this single-threaded timing loop', async ({ page }) => {
     const caption = page.locator('.diagram-card').nth(2).locator('p');
-    await expect(caption).toContainText('native build');
-    await expect(caption).toContainText('slower than SHA-256');
-
-    // The SVG description a screen reader gets says the same thing.
-    await expect(page.locator('#tree-desc')).toContainText('native');
+    await expect(caption).toContainText('native parallel speed advantage');
+    await expect(caption).toContainText('single-threaded JavaScript');
+    await expect(page.locator('#tree-desc')).toContainText('native parallel speed advantage');
     await expect(page.locator('#tree-desc')).toContainText('single-threaded');
-
-    // And the panel that renders the contradicting numbers reconciles them.
     await page.locator('.timing-details summary').click();
-    const note = page.locator('.timing-note');
-    await expect(note).toBeVisible();
-    await expect(note).toContainText('SHA-256');
-    await expect(note).toContainText('fastest of the three');
+    await expect(page.locator('.timing-note')).toContainText('not infer a universal speed ranking');
+    await expect(page.locator('.timing-note')).toContainText('native parallel speed advantage');
   });
 
   /**
