@@ -1194,3 +1194,17 @@ pre {
 #blockcipher-section .dm-card > p { margin:.75rem 0; }
 #blockcipher-section .dm-field input,#blockcipher-section .dm-field select { padding:.6rem; border:1px solid var(--border-strong); border-radius:8px; background:var(--surface); color:var(--text); min-height:2.75rem; }
 #blockcipher-section .dm-figure { max-width:22rem; margin:1rem auto; }
+
+/* Keep the same-message explanation close to the two sponge digest columns. */
+.hash-note {
+  margin-top: 1rem;
+  padding: 1rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface-soft);
+  color: var(--text);
+  line-height: 1.6;
+}
+.hash-note h3 { margin: 0 0 .5rem; }
+.hash-note p { margin: .5rem 0; }
+.hash-note a { color: inherit; text-decoration: underline; }
