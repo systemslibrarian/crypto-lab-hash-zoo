@@ -1,6 +1,8 @@
 import { blake3 } from '@noble/hashes/blake3.js';
 import { sha256, _SHA256 } from '@noble/hashes/sha2.js';
 import { sha3_256, keccak_256 } from '@noble/hashes/sha3.js';
+// Legacy primitives are exposed only for the labelled educational comparison.
+import { md5, sha1 } from '@noble/hashes/legacy.js';
 import { bytesToHex } from '@noble/hashes/utils.js';
 
 export interface HashDetail {
@@ -14,6 +16,8 @@ export interface HashResults {
   sha3: HashDetail;
   keccak: HashDetail;
   blake3: HashDetail;
+  md5: HashDetail;
+  sha1: HashDetail;
 }
 
 export interface AvalanchePerAlgorithm {
@@ -31,6 +35,8 @@ export interface AvalancheResult {
   sha3: AvalanchePerAlgorithm;
   keccak: AvalanchePerAlgorithm;
   blake3: AvalanchePerAlgorithm;
+  md5: AvalanchePerAlgorithm;
+  sha1: AvalanchePerAlgorithm;
 }
 
 export interface PaddingResult {
@@ -40,7 +46,7 @@ export interface PaddingResult {
 }
 
 const ITERATIONS = 100;
-const HASH_BITS = 256;
+export type HashAlgorithm = 'sha256' | 'sha3' | 'keccak' | 'blake3' | 'md5' | 'sha1';
 
 const encoder = new TextEncoder();
 
@@ -70,7 +76,8 @@ export function popcount(byte: number): number {
 }
 
 export function diffBitmap(a: Uint8Array, b: Uint8Array): { changedBitMap: boolean[]; diffBits: number } {
-  const changedBitMap = new Array<boolean>(HASH_BITS).fill(false);
+  if (a.length !== b.length) throw new Error('Cannot compare digests of different lengths.');
+  const changedBitMap = new Array<boolean>(a.length * 8).fill(false);
   let diffBits = 0;
 
   for (let byteIndex = 0; byteIndex < a.length; byteIndex += 1) {
@@ -108,31 +115,35 @@ function analyzePair(original: Uint8Array, changed: Uint8Array): AvalanchePerAlg
     originalHash: bytesToHex(original),
     flippedHash: bytesToHex(changed),
     diffBits,
-    diffPercent: (diffBits / HASH_BITS) * 100,
+    diffPercent: (diffBits / (original.length * 8)) * 100,
     changedBitMap,
   };
 }
 
 /**
- * The four hash functions the zoo compares, exported so tests can assert the
+ * The six hash functions the zoo compares, exported so tests can assert the
  * wiring against known-answer test vectors. A swapped or renamed import would
  * change these digests and fail the KAT suite instead of shipping silently.
  */
-export const HASH_FUNCTIONS: Record<'sha256' | 'sha3' | 'keccak' | 'blake3', (message: Uint8Array) => Uint8Array> = {
+export const HASH_FUNCTIONS: Record<HashAlgorithm, (message: Uint8Array) => Uint8Array> = {
   sha256,
   sha3: sha3_256,
   keccak: keccak_256,
   blake3,
+  md5,
+  sha1,
 };
 
 /** Pure digests with no timing, for testing and reuse. */
-export function digestAll(message: string): Record<'sha256' | 'sha3' | 'keccak' | 'blake3', string> {
+export function digestAll(message: string): Record<HashAlgorithm, string> {
   const messageBytes = encoder.encode(message);
   return {
     sha256: bytesToHex(HASH_FUNCTIONS.sha256(messageBytes)),
     sha3: bytesToHex(HASH_FUNCTIONS.sha3(messageBytes)),
     keccak: bytesToHex(HASH_FUNCTIONS.keccak(messageBytes)),
     blake3: bytesToHex(HASH_FUNCTIONS.blake3(messageBytes)),
+    md5: bytesToHex(HASH_FUNCTIONS.md5(messageBytes)),
+    sha1: bytesToHex(HASH_FUNCTIONS.sha1(messageBytes)),
   };
 }
 
@@ -143,6 +154,8 @@ export function hashAll(message: string): HashResults {
     sha3: avgTimedHash(messageBytes, HASH_FUNCTIONS.sha3),
     keccak: avgTimedHash(messageBytes, HASH_FUNCTIONS.keccak),
     blake3: avgTimedHash(messageBytes, HASH_FUNCTIONS.blake3),
+    md5: avgTimedHash(messageBytes, HASH_FUNCTIONS.md5),
+    sha1: avgTimedHash(messageBytes, HASH_FUNCTIONS.sha1),
   };
 }
 
@@ -169,6 +182,8 @@ export function avalancheAnalysis(message: string, bitPosition: number): Avalanc
     sha3: analyzePair(sha3Original, sha3Flipped),
     keccak: analyzePair(keccakOriginal, keccakFlipped),
     blake3: analyzePair(blake3Original, blake3Flipped),
+    md5: analyzePair(md5(originalBytes), md5(flippedBytes)),
+    sha1: analyzePair(sha1(originalBytes), sha1(flippedBytes)),
   };
 }
 
@@ -337,7 +352,7 @@ export const DIST_MAX_BITS = 4096; // cap work: sample at most this many input b
 
 export function avalancheDistribution(
   message: string,
-  algo: 'sha256' | 'sha3' | 'keccak' | 'blake3',
+  algo: HashAlgorithm,
   bucketCount = 20,
 ): AvalancheDistribution {
   const fn = HASH_FUNCTIONS[algo];
@@ -359,7 +374,7 @@ export function avalancheDistribution(
   for (let pos = 0; pos < totalBits; pos += step) {
     const flipped = flipBit(bytes, pos);
     const { diffBits } = diffBitmap(original, fn(flipped));
-    const pct = (diffBits / HASH_BITS) * 100;
+    const pct = (diffBits / (original.length * 8)) * 100;
     percents.push(pct);
     sum += pct;
     if (pct < min) min = pct;

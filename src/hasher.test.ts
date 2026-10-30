@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { describe, it, expect } from 'vitest';
 import keccakVectors from './fixtures/keccak-vectors.json';
 import { bytesToHex } from '@noble/hashes/utils.js';
@@ -20,6 +21,7 @@ import {
 import { inputBitStrip } from './avalanche';
 
 const enc = new TextEncoder();
+const OUTPUT_BITS = { sha256: 256, sha3: 256, keccak: 256, blake3: 256, md5: 128, sha1: 160 } as const;
 
 /**
  * Known-answer test vectors from the published standards, NOT re-derived from
@@ -31,6 +33,7 @@ const enc = new TextEncoder();
  *   SHA3-256  : FIPS 202
  *   Keccak-256: original Keccak; independently cross-checked with PyCryptodome
  *   BLAKE3    : BLAKE3 reference test vectors
+ *   MD5/SHA-1 : RFC 1321 / RFC 3174 (legacy comparisons only)
  */
 const KAT = {
   '': {
@@ -38,12 +41,16 @@ const KAT = {
     sha3: 'a7ffc6f8bf1ed76651c14756a061d662f580ff4de43b49fa82d80a4b80f8434a',
     keccak: 'c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470',
     blake3: 'af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262',
+    md5: 'd41d8cd98f00b204e9800998ecf8427e',
+    sha1: 'da39a3ee5e6b4b0d3255bfef95601890afd80709',
   },
   abc: {
     sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad',
     sha3: '3a985da74fe225b2045c172d6bd390bd855f086e3e9d525b46bfe24511431532',
     keccak: '4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45',
     blake3: '6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85',
+    md5: '900150983cd24fb0d6963f7d28e17f72',
+    sha1: 'a9993e364706816aba3e25717850c26c9cd0d89d',
   },
 } as const;
 
@@ -59,12 +66,14 @@ describe('known-answer test vectors (catches a swapped algorithm import)', () =>
       expect(results.sha3.hex).toBe(expected.sha3);
       expect(results.keccak.hex).toBe(expected.keccak);
       expect(results.blake3.hex).toBe(expected.blake3);
+      expect(results.md5.hex).toBe(expected.md5);
+      expect(results.sha1.hex).toBe(expected.sha1);
     });
   }
 
-  it('each of the four algorithms is distinct (not the same function under different labels)', () => {
+  it('each of the six algorithms is distinct (not the same function under different labels)', () => {
     const d = digestAll('avalanche');
-    expect(new Set(Object.values(d)).size).toBe(4);
+    expect(new Set(Object.values(d)).size).toBe(6);
   });
 
   it('HASH_FUNCTIONS.sha256 actually produces the SHA-256 KAT', () => {
@@ -77,16 +86,17 @@ describe('determinism and output shape', () => {
     expect(digestAll('The quick brown fox')).toEqual(digestAll('The quick brown fox'));
   });
 
-  it('every digest is exactly 256 bits (64 hex chars)', () => {
+  it('each digest has its specified length (128, 160 or 256 bits)', () => {
     const d = digestAll('The quick brown fox jumps over the lazy dog');
-    for (const hex of Object.values(d)) {
-      expect(hex).toMatch(/^[0-9a-f]{64}$/);
+    for (const algo of Object.keys(OUTPUT_BITS) as (keyof typeof OUTPUT_BITS)[]) {
+      expect(d[algo]).toMatch(/^[0-9a-f]+$/);
+      expect(d[algo]).toHaveLength(OUTPUT_BITS[algo] / 4);
     }
   });
 
   it('hashAll reports a non-negative average time per algorithm', () => {
     const results = hashAll('timing');
-    for (const detail of [results.sha256, results.sha3, results.keccak, results.blake3]) {
+    for (const detail of Object.values(results)) {
       expect(detail.timeMs).toBeGreaterThanOrEqual(0);
       expect(Number.isFinite(detail.timeMs)).toBe(true);
     }
@@ -143,13 +153,17 @@ describe('diffBitmap', () => {
     expect(changedBitMap.every((c) => c === false)).toBe(true);
   });
 
-  it('changedBitMap length is always 256 and diffBits matches the true count', () => {
-    const a = new Uint8Array(32).fill(0x00);
-    const b = new Uint8Array(32).fill(0xff);
+  it.each([16, 20, 32])('uses the actual digest size for %i-byte arrays', (bytes) => {
+    const a = new Uint8Array(bytes).fill(0x00);
+    const b = new Uint8Array(bytes).fill(0xff);
     const { diffBits, changedBitMap } = diffBitmap(a, b);
-    expect(changedBitMap).toHaveLength(256);
-    expect(diffBits).toBe(256);
+    expect(changedBitMap).toHaveLength(bytes * 8);
+    expect(diffBits).toBe(bytes * 8);
     expect(changedBitMap.every((c) => c === true)).toBe(true);
+  });
+
+  it('rejects mismatched digest lengths rather than silently padding', () => {
+    expect(() => diffBitmap(new Uint8Array(16), new Uint8Array(20))).toThrow('different lengths');
   });
 
   it('locates the changed bit in MSB-first order', () => {
@@ -163,14 +177,14 @@ describe('diffBitmap', () => {
 });
 
 describe('avalanche effect (~50% of output bits flip on a 1-bit input change)', () => {
-  const algorithms = ['sha256', 'sha3', 'keccak', 'blake3'] as const;
+  const algorithms = ['sha256', 'sha3', 'keccak', 'blake3', 'md5', 'sha1'] as const;
 
   it('flipping one input bit changes close to half the output bits for every algorithm', () => {
     const message = 'The quick brown fox jumps over the lazy dog';
     const bitCount = message.length * 8;
 
     // Average avalanche across many single-bit flips to smooth per-position noise.
-    const totals: Record<(typeof algorithms)[number], number> = { sha256: 0, sha3: 0, keccak: 0, blake3: 0 };
+    const totals: Record<(typeof algorithms)[number], number> = { sha256: 0, sha3: 0, keccak: 0, blake3: 0, md5: 0, sha1: 0 };
     const samples = 40;
     for (let s = 0; s < samples; s += 1) {
       const pos = Math.floor((s / samples) * bitCount);
@@ -182,7 +196,7 @@ describe('avalanche effect (~50% of output bits flip on a 1-bit input change)', 
 
     for (const algo of algorithms) {
       const avg = totals[algo] / samples;
-      // A strong hash flips ~50% of bits; require the average within [42, 58]%.
+      // Good diffusion flips ~50% of bits; require the average within [42, 58]%.
       expect(avg).toBeGreaterThan(42);
       expect(avg).toBeLessThan(58);
     }
@@ -202,11 +216,12 @@ describe('avalanche effect (~50% of output bits flip on a 1-bit input change)', 
     expect(diff).toBe(1);
   });
 
-  it('diffPercent is consistent with diffBits over 256 output bits', () => {
+  it('diffPercent uses the actual 128, 160 or 256 output bits', () => {
     const result = avalancheAnalysis('consistency', 3);
     for (const algo of algorithms) {
       const pair = result[algo];
-      expect(pair.diffPercent).toBeCloseTo((pair.diffBits / 256) * 100, 6);
+      expect(pair.changedBitMap).toHaveLength(OUTPUT_BITS[algo]);
+      expect(pair.diffPercent).toBeCloseTo((pair.diffBits / OUTPUT_BITS[algo]) * 100, 6);
       expect(pair.changedBitMap.filter(Boolean)).toHaveLength(pair.diffBits);
     }
   });
@@ -258,7 +273,7 @@ describe('length extension (real SHA-256 forgery, not a mock)', () => {
 describe('avalancheDistribution (statistical ~50% law)', () => {
   it('mean output-diff over every input bit clusters near 50% for each algorithm', () => {
     const msg = 'The quick brown fox jumps over the lazy dog';
-    for (const algo of ['sha256', 'sha3', 'keccak', 'blake3'] as const) {
+    for (const algo of ['sha256', 'sha3', 'keccak', 'blake3', 'md5', 'sha1'] as const) {
       const d = avalancheDistribution(msg, algo);
       expect(d.percents.length).toBe(msg.length * 8);
       expect(d.mean).toBeGreaterThan(42);
@@ -386,4 +401,38 @@ describe('Keccak-256 independent fixtures', () => {
       expect(digests.keccak).not.toBe(digests.sha3);
     });
   }
+});
+
+// OpenSSL is independent of the browser's @noble implementations. These are
+// compatibility/teaching checks, not security uses of the legacy primitives.
+describe.each(['md5', 'sha1'] as const)('%s legacy comparison', (algo) => {
+  const oracle = (bytes: Uint8Array) => createHash(algo).update(bytes).digest();
+
+  it('matches OpenSSL for UTF-8 and padding/block boundaries', () => {
+    for (const message of ['hello 🌍 café', ...[55, 56, 63, 64, 65, 119, 120].map(n => 'x'.repeat(n))]) {
+      expect(digestAll(message)[algo]).toBe(oracle(enc.encode(message)).toString('hex'));
+    }
+  });
+
+  it('matches independent bit maps and percentages for every input-bit flip', () => {
+    const message = 'café';
+    const bytes = enc.encode(message);
+    const original = oracle(bytes);
+    const percents: number[] = [];
+    for (let pos = 0; pos < bytes.length * 8; pos += 1) {
+      const changed = bytes.slice();
+      changed[Math.floor(pos / 8)] ^= 1 << (7 - pos % 8);
+      const digest = oracle(changed);
+      const map = [...original].flatMap((b, i) =>
+        Array.from({ length: 8 }, (_, bit) => Boolean((b ^ digest[i]) & (1 << (7 - bit)))));
+      const diff = map.filter(Boolean).length;
+      const percent = diff / OUTPUT_BITS[algo] * 100;
+      expect(avalancheAnalysis(message, pos)[algo]).toEqual({
+        originalHash: original.toString('hex'), flippedHash: digest.toString('hex'),
+        changedBitMap: map, diffBits: diff, diffPercent: percent,
+      });
+      percents.push(percent);
+    }
+    expect(avalancheDistribution(message, algo).percents).toEqual(percents);
+  });
 });

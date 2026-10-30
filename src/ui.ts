@@ -11,6 +11,7 @@ import {
   type AvalancheDistribution,
   type AvalanchePerAlgorithm,
   type HashResults,
+  type HashAlgorithm,
   type LengthExtensionResult,
 } from './hasher';
 
@@ -76,6 +77,16 @@ function makeHashRows(results: HashResults): string {
         <div class="hex-wrap">${renderByteSpans(results.blake3.hex)}</div>
         <button class="copy-btn" type="button" data-copy="${results.blake3.hex}" aria-label="Copy BLAKE3 hash">Copy</button>
       </td>
+      <td data-label="MD5">
+        <span class="legacy-badge">Legacy · collision-broken</span>
+        <div class="hex-wrap">${renderByteSpans(results.md5.hex)}</div>
+        <button class="copy-btn" type="button" data-copy="${results.md5.hex}" aria-label="Copy MD5 hash">Copy</button>
+      </td>
+      <td data-label="SHA-1">
+        <span class="legacy-badge">Legacy · collision-broken</span>
+        <div class="hex-wrap">${renderByteSpans(results.sha1.hex)}</div>
+        <button class="copy-btn" type="button" data-copy="${results.sha1.hex}" aria-label="Copy SHA-1 hash">Copy</button>
+      </td>
     </tr>
     <tr>
       <th scope="row">Output size</th>
@@ -83,6 +94,8 @@ function makeHashRows(results: HashResults): string {
       <td data-label="SHA3-256">256 bits</td>
       <td data-label="Keccak-256">256 bits</td>
       <td data-label="BLAKE3">256 bits</td>
+      <td data-label="MD5">128 bits</td>
+      <td data-label="SHA-1">160 bits</td>
     </tr>
     <tr>
       <th scope="row">Internal state <span class="th-note">(running memory between blocks)</span></th>
@@ -90,6 +103,8 @@ function makeHashRows(results: HashResults): string {
       <td data-label="SHA3-256">1600-bit state, split 1088 rate | 512 capacity <span class="td-note">(the 512 stays hidden)</span></td>
       <td data-label="Keccak-256">1600-bit state, split 1088 rate | 512 capacity <span class="td-note">(same split as SHA3-256)</span></td>
       <td data-label="BLAKE3">256-bit chaining value per tree node</td>
+      <td data-label="MD5">128-bit chaining value</td>
+      <td data-label="SHA-1">160-bit chaining value</td>
     </tr>
     <tr>
       <th scope="row">Construction <span class="th-note">(how blocks are combined)</span></th>
@@ -97,6 +112,8 @@ function makeHashRows(results: HashResults): string {
       <td data-label="SHA3-256">Sponge <span class="td-note">(absorb then squeeze)</span></td>
       <td data-label="Keccak-256">Sponge <span class="td-note">(different suffix from SHA3-256)</span></td>
       <td data-label="BLAKE3">Binary tree <span class="td-note">(leaves combined in parallel)</span></td>
+      <td data-label="MD5">Merkle-Damgard <span class="td-note">(512-bit blocks)</span></td>
+      <td data-label="SHA-1">Merkle-Damgard <span class="td-note">(512-bit blocks)</span></td>
     </tr>
   `;
 }
@@ -108,16 +125,18 @@ function makeTimingHtml(results: HashResults): string {
       <div class="timing-cell"><span class="timing-algo">SHA3-256</span><span class="timing-num">${formatMicros(results.sha3.timeMs)}</span></div>
       <div class="timing-cell"><span class="timing-algo">Keccak-256</span><span class="timing-num">${formatMicros(results.keccak.timeMs)}</span></div>
       <div class="timing-cell"><span class="timing-algo">BLAKE3</span><span class="timing-num">${formatMicros(results.blake3.timeMs)}</span></div>
+      <div class="timing-cell"><span class="timing-algo">MD5 (legacy)</span><span class="timing-num">${formatMicros(results.md5.timeMs)}</span></div>
+      <div class="timing-cell"><span class="timing-algo">SHA-1 (legacy)</span><span class="timing-num">${formatMicros(results.sha1.timeMs)}</span></div>
     </div>
   `;
 }
 
-// Heatmap: for each of the 32 output bytes, count how many of its 8 bits
+// Heatmap: for each output byte, count how many of its 8 bits
 // changed (0..8) so the color carries information (uniform diffusion) instead
 // of the old decorative index-mod-8 tint.
 function perByteChanges(changedBitMap: boolean[]): number[] {
   const counts: number[] = [];
-  for (let byteIndex = 0; byteIndex < 32; byteIndex += 1) {
+  for (let byteIndex = 0; byteIndex < changedBitMap.length / 8; byteIndex += 1) {
     let n = 0;
     for (let bit = 0; bit < 8; bit += 1) {
       if (changedBitMap[byteIndex * 8 + bit]) n += 1;
@@ -128,6 +147,8 @@ function perByteChanges(changedBitMap: boolean[]): number[] {
 }
 
 function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
+  const outputBits = data.changedBitMap.length;
+  const legacy = id === 'md5' || id === 'sha-1';
   const pct = data.diffPercent;
   const delta = Math.abs(pct - 50);
   const quality = delta <= 6 ? 'ideal' : delta <= 12 ? 'good' : 'off';
@@ -135,12 +156,13 @@ function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
   return `
     <div class="algo-card">
       <h3>${id.toUpperCase()}</h3>
-      <p class="algo-meta">Changed: <strong>${data.diffBits}/256</strong> bits (${pct.toFixed(1)}%)</p>
+      ${legacy ? '<p class="legacy-badge">Legacy · collision-broken</p>' : ''}
+      <p class="algo-meta">Changed: <strong>${data.diffBits}/${outputBits}</strong> bits (${pct.toFixed(1)}%)</p>
       <div class="meter is-${quality}" aria-hidden="true">
         <div class="meter-fill" style="width:${pct.toFixed(1)}%"></div>
         <span class="meter-mark"></span>
       </div>
-      <div class="bit-grid" role="img" aria-label="${id}: ${data.diffBits} of 256 output bits changed, ${pct.toFixed(1)} percent, ${delta <= 6 ? 'close to the ideal 50 percent' : 'away from the ideal 50 percent'}">
+      <div class="bit-grid" role="img" aria-label="${id}: ${data.diffBits} of ${outputBits} output bits changed, ${pct.toFixed(1)} percent, ${delta <= 6 ? 'close to the ideal 50 percent' : 'away from the ideal 50 percent'}">
         ${data.changedBitMap
           .map(
             (changed, index) =>
@@ -149,7 +171,7 @@ function renderGrid(data: AvalanchePerAlgorithm, id: string): string {
           .join('')}
       </div>
       <p class="heatmap-caption">Per-byte heatmap — how many of each output byte's 8 bits changed. Even, near-4/8 shading everywhere is the goal (uniform diffusion).</p>
-      <div class="byte-heatmap" role="img" aria-label="${id}: per-byte change heatmap. Each of 32 output bytes changed between ${Math.min(...heat)} and ${Math.max(...heat)} of its 8 bits.">
+      <div class="byte-heatmap" role="img" aria-label="${id}: per-byte change heatmap. Each of ${heat.length} output bytes changed between ${Math.min(...heat)} and ${Math.max(...heat)} of its 8 bits.">
         ${heat
           .map(
             (n, index) =>
@@ -169,7 +191,7 @@ function buildAppHtml(): string {
     <header class="cl-hero">
       <div class="cl-hero-main">
         <h1 class="cl-hero-title">Hash Zoo</h1>
-        <p class="cl-hero-sub">SHA-256 · SHA3-256 · Keccak-256 · BLAKE3</p>
+        <p class="cl-hero-sub">SHA-256 · SHA3-256 · Keccak-256 · BLAKE3 · MD5 / SHA-1 (legacy)</p>
         <p class="cl-hero-desc">Hashes the same message through Merkle-Damgard, sponge, and tree constructions side-by-side, then flips a single input bit so you can watch each design's avalanche scatter across the output.</p>
       </div>
       <aside class="cl-hero-why" aria-label="Why it matters">
@@ -183,7 +205,7 @@ function buildAppHtml(): string {
       <p class="intro-lead">A <strong>hash function</strong> takes any input and boils it down to a short, fixed-size fingerprint. Three plain rules define a good one:</p>
       <ul class="intro-rules">
         <li><strong>Deterministic</strong> — the same input always gives the same fingerprint.</li>
-        <li><strong>Fixed-size</strong> — a tweet or a movie both come out as the same 256-bit tag.</li>
+        <li><strong>Fixed-size</strong> — each algorithm has a fixed output size: 256 bits for SHA-256, for example, whether the input is a tweet or a movie.</li>
         <li><strong>One-way &amp; unpredictable</strong> — you can't run it backwards to the input, and changing anything scrambles the whole output.</li>
       </ul>
       <div class="intro-live">
@@ -199,16 +221,16 @@ function buildAppHtml(): string {
 
     <section class="panel" id="hash-comparison">
       <h2>Section A - Hash Comparison</h2>
-      <p class="section-lead">Four hash functions, three construction families. Each column computes a real 256-bit digest of the same message in your browser. SHA3-256 and Keccak-256 share the same sponge design, but use different input suffixes. Compare their outputs below; Sections C and the info panel explain the constructions.</p>
+      <p class="section-lead">Six hash functions, three construction families. Each column computes a real digest of the same message in your browser: 256 bits for the first four, 128 for MD5, and 160 for SHA-1. The two legacy hashes have broken collision resistance. SHA3-256 and Keccak-256 share the same sponge design, but use different input suffixes. Compare their outputs below; Sections C and the info panel explain the constructions.</p>
       <label for="message-input">Message</label>
       <textarea id="message-input" rows="4">${defaultMessage}</textarea>
       <div class="button-row">
-        <button id="hash-btn" type="button">Hash All Four</button>
+        <button id="hash-btn" type="button">Hash All Six</button>
         <button id="padding-btn" class="ghost-btn" type="button">Padding info</button>
       </div>
       <div class="table-wrap" tabindex="0" role="region" aria-label="Hash comparison results">
         <table aria-label="Hash comparison results">
-          <caption class="sr-only">Side-by-side comparison of SHA-256, SHA3-256, Keccak-256, and BLAKE3</caption>
+          <caption class="sr-only">Side-by-side comparison of SHA-256, SHA3-256, Keccak-256, BLAKE3, and legacy MD5 and SHA-1</caption>
           <thead>
             <tr>
               <td></td>
@@ -216,6 +238,8 @@ function buildAppHtml(): string {
               <th scope="col">SHA3-256</th>
               <th scope="col">Keccak-256</th>
               <th scope="col">BLAKE3</th>
+              <th scope="col">MD5 <span class="legacy-badge">Legacy</span></th>
+              <th scope="col">SHA-1 <span class="legacy-badge">Legacy</span></th>
             </tr>
           </thead>
           <tbody id="hash-results"></tbody>
@@ -232,7 +256,7 @@ function buildAppHtml(): string {
           <p>Sources: <a href="https://keccak.team/keccak_specs_summary.html" target="_blank" rel="noreferrer">Keccak Team specification summary</a> and <a href="https://ethereum.org/en/developers/docs/data-structures-and-encoding/patricia-merkle-trie/" target="_blank" rel="noreferrer">Ethereum's Keccak-256 usage</a>.</p>
         </details>
       </aside>
-      <p class="hash-note legacy-hashes"><strong>Looking for MD5 and SHA-1?</strong> <a href="https://systemslibrarian.github.io/crypto-lab-collision-vault/">Open Collision Vault</a> to verify published collision pairs: different files with the same digest. Both have broken collision resistance; they are historical lessons, not choices for new collision-resistant designs.</p>
+      <p class="hash-note legacy-hashes"><strong>MD5 and SHA-1: historical comparison only.</strong> Both have broken collision resistance. A convincing avalanche pattern does not make them safe for signatures or adversarial integrity checks. <a href="https://systemslibrarian.github.io/crypto-lab-collision-vault/">See a real collision in Collision Vault</a>: different files with the same digest.</p>
       <details class="timing-details">
         <summary>Show indicative timing (not a benchmark)</summary>
         <div id="timing-grid-host"></div>
@@ -242,7 +266,7 @@ function buildAppHtml(): string {
 
     <section class="panel" id="avalanche-section">
       <h2>Section B - Avalanche Effect</h2>
-      <p class="section-lead">The headline property: flip <strong>one</strong> input bit and about <strong>half</strong> of the 256 output bits flip — unpredictably. Watch the cause (one input bit, left) and the effect (the output storm, right) in the same view.</p>
+      <p class="section-lead">The headline property: flip <strong>one</strong> input bit and about <strong>half</strong> of each digest's output bits flip (128 for MD5, 160 for SHA-1, 256 for the others) — unpredictably. Watch the cause (one input bit, left) and the effect (the output storm, right) in the same view.</p>
       <p id="message-preview"></p>
       <div class="slider-row">
         <label for="bit-slider">Bit position to flip</label>
@@ -269,11 +293,11 @@ function buildAppHtml(): string {
       <div id="avalanche-grids" class="avalanche-wrap">
         <p class="empty-state">Scroll here or press <strong>Analyze Avalanche</strong> to compute the bit-change grids.</p>
       </div>
-      <p class="ideal-note">A strong hash flips roughly 50% of output bits when a single input bit changes. Each card's meter shows how close it lands to that ideal.</p>
+      <p class="ideal-note">Each card's meter shows how close the change lands to 50% of that algorithm's output bits. This measures diffusion, not security: MD5 and SHA-1 can show a strong avalanche effect despite their broken collision resistance.</p>
 
       <div class="dist-block">
         <h3 class="mini-head">Is ~50% just luck? Flip every bit and see.</h3>
-        <p class="mini-note">One flip landing near 50% could be coincidence. This flips <em>every</em> input bit in turn and plots the distribution of output-diff percentages. A strong hash clusters them tightly around 50% — that tight cluster is the security-relevant law, not any single result. Past ${DIST_MAX_BITS} bits (messages over ${DIST_MAX_BITS / 8} bytes) it samples evenly instead of flipping every bit, so the sweep stays responsive; the readout always says which of the two it did.</p>
+        <p class="mini-note">One flip landing near 50% could be coincidence. This flips <em>every</em> input bit in turn and plots the distribution of output-diff percentages. Clustering around 50% demonstrates diffusion across many flips; it does not prove collision resistance. Shorter digests naturally show more variation in their percentages. Past ${DIST_MAX_BITS} bits (messages over ${DIST_MAX_BITS / 8} bytes) it samples evenly instead of flipping every bit, so the sweep stays responsive; the readout always says which of the two it did.</p>
         <div class="dist-controls">
           <label for="dist-algo">Algorithm</label>
           <select id="dist-algo">
@@ -281,6 +305,8 @@ function buildAppHtml(): string {
             <option value="sha3">SHA3-256</option>
             <option value="keccak">Keccak-256</option>
             <option value="blake3">BLAKE3</option>
+            <option value="md5">MD5 (legacy · collision-broken)</option>
+            <option value="sha1">SHA-1 (legacy · collision-broken)</option>
           </select>
           <button id="dist-btn" type="button">Run every-bit sweep</button>
         </div>
@@ -290,7 +316,7 @@ function buildAppHtml(): string {
 
     <section class="panel" id="construction-section">
       <h2>Section C - Construction Comparison</h2>
-      <p class="section-lead">Four 256-bit hashes, three construction families: SHA3-256 and Keccak-256 share the sponge. The single most consequential difference: what the final digest reveals about the hash's <em>internal state</em>. Merkle-Damgard publishes its whole state as the digest — so an attacker can resume from it. The sponge withholds an internal <span class="term">capacity <span class="term-def">(the part of the state never exposed in the output)</span></span> lane, so they can't.</p>
+      <p class="section-lead">Six hashes, three construction families: SHA3-256 and Keccak-256 share the sponge; MD5 and SHA-1 use the same broad Merkle-Damgard structure as SHA-256, with different compression functions and output sizes. The single most consequential difference: what the final digest reveals about the hash's <em>internal state</em>. Merkle-Damgard publishes its whole state as the digest — so an attacker can resume from it. The sponge withholds an internal <span class="term">capacity <span class="term-def">(the part of the state never exposed in the output)</span></span> lane, so they can't.</p>
       <div class="diagram-row">
         <article class="diagram-card">
           <h3>SHA-256 (Merkle-Damgaard)</h3>
@@ -405,8 +431,10 @@ function buildAppHtml(): string {
           <li>Message authentication: HMAC-SHA256, KMAC, or BLAKE3 keyed mode</li>
           <li>Protocol compatibility: use the exact named hash; Keccak-256 and SHA3-256 cannot be substituted for each other</li>
           <li>NIST compliance required: SHA-256 or SHA-3</li>
+          <li>MD5 and SHA-1: historical demonstrations only; their collision resistance is broken</li>
           <li>Length-extension resistance does not make an unkeyed hash a MAC</li>
         </ul>
+        <p>Legacy sources: <a href="https://www.rfc-editor.org/rfc/rfc6151" target="_blank" rel="noreferrer">MD5 security considerations (RFC 6151)</a> and <a href="https://security.googleblog.com/2017/02/announcing-first-sha1-collision.html" target="_blank" rel="noreferrer">the first published SHA-1 collision</a>.</p>
       </div>
       <details>
         <summary>Why this matters</summary>
@@ -570,7 +598,7 @@ function ordinal(n: number): string {
 function renderDistribution(
   host: HTMLElement,
   message: string,
-  algo: 'sha256' | 'sha3' | 'keccak' | 'blake3',
+  algo: HashAlgorithm,
 ): AvalancheDistribution | null {
   if (message.length === 0) {
     host.innerHTML = '<p class="empty-state">Add a message above to run the sweep.</p>';
@@ -709,7 +737,9 @@ export function initHashZoo(): void {
           `SHA-256 ${formatMicros(results.sha256.timeMs)}, ` +
           `SHA3-256 ${formatMicros(results.sha3.timeMs)}, ` +
           `Keccak-256 ${formatMicros(results.keccak.timeMs)}, ` +
-          `BLAKE3 ${formatMicros(results.blake3.timeMs)}.`,
+          `BLAKE3 ${formatMicros(results.blake3.timeMs)}, ` +
+          `MD5 ${formatMicros(results.md5.timeMs)}, ` +
+          `SHA-1 ${formatMicros(results.sha1.timeMs)}.`,
       );
     }
   };
@@ -746,6 +776,8 @@ export function initHashZoo(): void {
       renderGrid(result.sha3, 'sha3-256'),
       renderGrid(result.keccak, 'keccak-256'),
       renderGrid(result.blake3, 'blake3'),
+      renderGrid(result.md5, 'md5'),
+      renderGrid(result.sha1, 'sha-1'),
     ].join('');
     if (options.announceResult) {
       announce(
@@ -753,7 +785,9 @@ export function initHashZoo(): void {
           `SHA-256 ${result.sha256.diffPercent.toFixed(1)} percent, ` +
           `SHA3-256 ${result.sha3.diffPercent.toFixed(1)} percent, ` +
           `Keccak-256 ${result.keccak.diffPercent.toFixed(1)} percent, ` +
-          `BLAKE3 ${result.blake3.diffPercent.toFixed(1)} percent.`,
+          `BLAKE3 ${result.blake3.diffPercent.toFixed(1)} percent, ` +
+          `MD5 ${result.md5.diffPercent.toFixed(1)} percent, ` +
+          `SHA-1 ${result.sha1.diffPercent.toFixed(1)} percent.`,
       );
     }
     requestAnimationFrame(() => {
@@ -824,7 +858,7 @@ export function initHashZoo(): void {
   if (distBtn && distAlgo && distResult) {
     distBtn.addEventListener('click', () => {
       const selected = distAlgo.value;
-      if (selected !== 'sha256' && selected !== 'sha3' && selected !== 'keccak' && selected !== 'blake3') {
+      if (selected !== 'sha256' && selected !== 'sha3' && selected !== 'keccak' && selected !== 'blake3' && selected !== 'md5' && selected !== 'sha1') {
         const message = 'Choose a supported algorithm to run the sweep.';
         distResult.textContent = message;
         announce(message);
