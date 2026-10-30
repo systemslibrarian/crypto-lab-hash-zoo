@@ -517,6 +517,21 @@ test.describe('Section B: avalanche effect', () => {
 // ---------------------------------------------------------------------------
 
 test.describe('Section B: every-bit sweep', () => {
+  test('rejects an unexpected algorithm value without treating DOM text as HTML', async ({ page }) => {
+    await page.locator('#dist-btn').click();
+    await expect(page.locator('#dist-result .hist')).toBeVisible();
+    await page.locator('#dist-algo').evaluate((element) => {
+      const select = element as HTMLSelectElement;
+      const injected = new Option('unexpected', '<img src=x onerror="window.hashZooInjected=true">');
+      select.add(injected);
+      select.value = injected.value;
+    });
+    await page.locator('#dist-btn').click();
+    await expect(page.locator('#dist-result')).toHaveText('Choose a supported algorithm to run the sweep.');
+    await expect(page.locator('#aria-live-region')).toHaveText('Choose a supported algorithm to run the sweep.');
+    await expect(page.locator('#dist-result img, #dist-result .hist')).toHaveCount(0);
+    expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).hashZooInjected)).toBeUndefined();
+  });
   for (const algo of ['sha256', 'sha3', 'keccak', 'blake3'] as const) {
     test(`the ${algo} sweep's buckets sum to the flips it reports`, async ({ page }) => {
       test.setTimeout(90_000);

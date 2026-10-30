@@ -590,7 +590,7 @@ function renderDistribution(
   const scope = describeSweepScope(dist);
   host.innerHTML = `
     <p class="dist-summary">${dist.percents.length} single-bit flips · ${scope} · mean <strong>${dist.mean.toFixed(1)}%</strong> · range ${dist.min.toFixed(1)}–${dist.max.toFixed(1)}% · the 50% column is highlighted.</p>
-    <div class="hist" role="img" aria-label="${algo}: distribution of output-diff percent over ${dist.percents.length} single-bit input flips, ${scope}. Mean ${dist.mean.toFixed(1)} percent, range ${dist.min.toFixed(1)} to ${dist.max.toFixed(1)} percent, tightly clustered near 50 percent.">${bars}</div>
+    <div class="hist" role="img" aria-label="${escapeHtml(algo)}: distribution of output-diff percent over ${dist.percents.length} single-bit input flips, ${scope}. Mean ${dist.mean.toFixed(1)} percent, range ${dist.min.toFixed(1)} to ${dist.max.toFixed(1)} percent, tightly clustered near 50 percent.">${bars}</div>
     <div class="hist-axis"><span>0%</span><span>50%</span><span>100%</span></div>
   `;
   return dist;
@@ -823,7 +823,14 @@ export function initHashZoo(): void {
   // Avalanche distribution sweep (flip every input bit).
   if (distBtn && distAlgo && distResult) {
     distBtn.addEventListener('click', () => {
-      const algo = distAlgo.value as 'sha256' | 'sha3' | 'keccak' | 'blake3';
+      const selected = distAlgo.value;
+      if (selected !== 'sha256' && selected !== 'sha3' && selected !== 'keccak' && selected !== 'blake3') {
+        const message = 'Choose a supported algorithm to run the sweep.';
+        distResult.textContent = message;
+        announce(message);
+        return;
+      }
+      const algo = selected;
       const d = renderDistribution(distResult, messageInput.value, algo);
       if (!d) {
         announce('Add a message above to run the sweep.');
