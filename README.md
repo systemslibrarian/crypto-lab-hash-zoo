@@ -2,7 +2,7 @@
 
 ## What It Is
 
-Hash Zoo is an interactive side-by-side comparison of four cryptographic hash functions: SHA-256 (Merkle-Damgård construction via `@noble/hashes/sha2`), SHA3-256 and original Keccak-256 (sponge constructions with different suffixes via `@noble/hashes/sha3`), and BLAKE3 (binary tree hash via `@noble/hashes/blake3`). It opens with a plain-language "what is a hash?" on-ramp, then computes 256-bit digests, visualizes the avalanche effect — how flipping a single input bit changes roughly half the output bits — showing the flipped input bit next to the output storm, and demonstrates the flagship structural difference between constructions by performing a **real, live SHA-256 length-extension forgery** in the browser. A same-message explanation distinguishes Keccak-256 from SHA3-256, including their suffix encodings and Ethereum compatibility, and links directly to Collision Vault for MD5/SHA-1 collisions. Timing across 100 iterations and SHA-256 padding / SHA-3 rate–capacity details are available as secondary, honestly-caveated views.
+Hash Zoo is an interactive side-by-side comparison of six hash functions: SHA-256 (Merkle-Damgård construction via `@noble/hashes/sha2`), SHA3-256 and original Keccak-256 (sponge constructions with different suffixes via `@noble/hashes/sha3`), BLAKE3 (binary tree hash via `@noble/hashes/blake3`), and legacy MD5 and SHA-1 (Merkle-Damgård via `@noble/hashes/legacy`). It opens with a plain-language "what is a hash?" on-ramp, then computes correctly sized digests (256 bits for the first four, 128 for MD5, 160 for SHA-1), visualizes the avalanche effect — how flipping a single input bit changes roughly half the output bits — showing the flipped input bit next to the output storm, and demonstrates the flagship structural difference between constructions by performing a **real, live SHA-256 length-extension forgery** in the browser. A same-message explanation distinguishes Keccak-256 from SHA3-256, including their suffix encodings and Ethereum compatibility, and links directly to Collision Vault for MD5/SHA-1 collisions. Timing across 100 iterations and SHA-256 padding / SHA-3 rate–capacity details are available as secondary, honestly-caveated views.
 
 Section D adds an AES-128 Davies–Meyer teaching hash using `@noble/ciphers`, with free-start preimages, fixed points, and an ambiguous-padding collision. It preserves the existing full-round hash comparison and length-extension paths.
 
@@ -30,7 +30,7 @@ Every digest, forged tag, and avalanche count in Sections A–C is computed in-b
 
 **[systemslibrarian.github.io/crypto-lab-hash-zoo](https://systemslibrarian.github.io/crypto-lab-hash-zoo/)**
 
-Start with the "what is a hash?" box and type to watch a live fingerprint. Type or paste any message into the Section A textarea and click "Hash All Four" to see hex output and construction metadata for all four algorithms (timing lives behind the "show indicative timing" toggle). Use the bit-position slider in Section B to flip a single bit — the flipped input bit is highlighted in an input strip beside the 16×16 avalanche grid — then run the "flip every bit" sweep to see the ~50% distribution. In Section C, run the length-extension forgery to watch a valid extended SHA-256 tag appear from a published tag alone. Click "Padding info" to inspect the SHA-256 padded block and SHA-3 rate/capacity split.
+Start with the "what is a hash?" box and type to watch a live fingerprint. Type or paste any message into the Section A textarea and click "Hash All Six" to see hex output and construction metadata for all six algorithms (timing lives behind the "show indicative timing" toggle). Use the bit-position slider in Section B to flip a single bit — the flipped input bit is highlighted in an input strip beside the avalanche grids (128, 160, or 256 cells) — then run the "flip every bit" sweep to see the ~50% distribution. In Section C, run the length-extension forgery to watch a valid extended SHA-256 tag appear from a published tag alone. Click "Padding info" to inspect the SHA-256 padded block and SHA-3 rate/capacity split.
 
 ## About the Timings (read before comparing speeds)
 
@@ -40,7 +40,9 @@ The "Time (avg µs)" row is an in-browser average over 100 iterations. It is del
 
 Both use Keccak-f[1600] with 24 rounds, a 1088-bit rate, a 512-bit capacity, and a 256-bit digest. SHA3-256 adds the SHA-3 domain-separation suffix before padding. For byte-aligned input, the combined suffix/padding encodings are `0x06` for SHA3-256 and `0x01` for original Keccak-256. They give different digests and must not be substituted for each other. The encodings are handled by the primitives; users should not append these bytes to the message themselves.
 
-Enter `abc`, then clear the input, to compare both functions in Section A. Keccak-256 also participates in the avalanche cards, every-bit sweep, indicative timing, and copy controls. MD5 and SHA-1 remain in [Collision Vault](https://systemslibrarian.github.io/crypto-lab-collision-vault/), where published pairs demonstrate their broken collision resistance.
+Enter `abc`, then clear the input, to compare both functions in Section A. Keccak-256 also participates in the avalanche cards, every-bit sweep, indicative timing, and copy controls. MD5 and SHA-1 now participate in all of those comparisons too, clearly labelled **legacy · collision-broken**. Their bit grids and percentages use the real digest lengths, not padded 256-bit outputs. A near-50% avalanche pattern measures diffusion, not security. [Collision Vault](https://systemslibrarian.github.io/crypto-lab-collision-vault/) demonstrates their broken collision resistance with published pairs. They are historical teaching examples, not choices for new signatures or adversarial integrity checks.
+
+Legacy sources: [RFC 6151 (MD5 security)](https://www.rfc-editor.org/rfc/rfc6151) and [the first published SHA-1 collision](https://security.googleblog.com/2017/02/announcing-first-sha1-collision.html).
 
 Sources: [Keccak Team specification summary](https://keccak.team/keccak_specs_summary.html) and [Ethereum's Merkle Patricia trie documentation](https://ethereum.org/en/developers/docs/data-structures-and-encoding/patricia-merkle-trie/).
 
@@ -85,8 +87,9 @@ npm run test:e2e    # Playwright: rendered-claim gate + axe-core accessibility g
 
 - **Known-answer vectors.** SHA-256, SHA3-256, and BLAKE3 digests of `""` and `"abc"` are checked against the published standard vectors (FIPS 180-4, FIPS 202, BLAKE3 reference). Swapping a source import (for example `sha3` → `sha256`) fails these tests immediately.
 - **Keccak-256 independent vectors.** Ten fixed values in `src/fixtures/keccak-vectors.json`, computed with PyCryptodome 4.2.0 (`Crypto.Hash.keccak.new(digest_bits=256, data=message.encode("utf-8")).hexdigest()`), cover empty input, `abc`, the default message, Unicode, and 135/136/137/271/272/273-byte inputs around the 136-byte sponge rate. Both unit and browser tests check these values; a swapped SHA3-256 implementation fails them. Browser checks also verify the Keccak-labelled copy button and an independently computed avalanche count. PyCryptodome is an offline fixture source, not a runtime dependency.
-- **Distinctness.** The four algorithms produce different digests for the same input.
-- **Avalanche ~50%.** Averaged over many single-bit input flips, each algorithm changes close to half of the 256 output bits (asserted within 42–58%). The every-bit distribution sweep is asserted the same way, with bucket counts summing to the number of flips.
+- **Legacy MD5/SHA-1 accuracy.** Published empty/`abc` vectors, independent OpenSSL checks across UTF-8 and 55/56/63/64/65/119/120-byte padding boundaries, and exact independent bit maps and sweep percentages for every input bit. Browser tests check both output sizes, copy controls, legacy labels, and the collision link.
+- **Distinctness.** The six algorithms produce different digests for the same input.
+- **Avalanche ~50%.** Averaged over many single-bit input flips, each algorithm changes close to half of each algorithm's output bits (128, 160, or 256) (asserted within 42–58%). The every-bit distribution sweep is asserted the same way, with bucket counts summing to the number of flips.
 - **Length-extension forgery is real.** `lengthExtend` resumes SHA-256 from a published digest, appends attacker data, and the test asserts the forged tag equals `SHA-256(secret ‖ glue ‖ append)` recomputed from scratch — for several secrets and an empty append — so the demo cannot ship a faked forgery. `sha256GluePadding` is checked for the `0x80` marker, block alignment, and big-endian length tail.
 - **Pure-function correctness.** `popcount` over all 256 byte values, `flipBit` (exactly one bit changed, input not mutated, MSB-first, range/empty guards), `diffBitmap` (bit locations and counts), and `paddingInfo` (SHA-256 Merkle–Damgård `0x80` marker, 512-bit block alignment, big-endian length tail; SHA-3 rate+capacity = 1600).
 
@@ -96,10 +99,10 @@ verdict cannot ship either. It asserts:
 
 - **The digests on screen are the real digests.** SHA-256 and SHA3-256 are checked against Node's
   OpenSSL bindings — an oracle independent of `@noble` — and BLAKE3 against the published reference
-  vectors, plus determinism, fixed 256-bit output for a 1-character and a 20,000-character message,
-  and that one edited character moves all four.
-- **Every counter is internally consistent.** For each avalanche card the `N/256 bits (P%)` headline
-  must equal the number of `changed` cells actually drawn, the 32 per-byte heatmap values must sum
+  vectors, plus determinism, fixed per-algorithm output lengths for a 1-character and a 20,000-character message,
+  and that one edited character moves all six.
+- **Every counter is internally consistent.** For each avalanche card the `N/total bits (P%)` headline
+  must equal the number of `changed` cells actually drawn, the 16, 20, or 32 per-byte heatmap values must sum
   back to `N`, the meter width must be `P`, and the exact `N` is cross-checked against a
   bit-difference computed in the test. The every-bit sweep's 20 histogram buckets must sum to the
   number of flips it claims to have run.
@@ -115,7 +118,7 @@ verdict cannot ship either. It asserts:
 `npm test` runs only the Vitest unit suite; the Playwright suite in `e2e/` is excluded from it and
 run separately via `npm run test:e2e` (`npm run test:a11y` is the same command, kept as an alias).
 
-Section D adds 11 unit tests (52 total including Keccak fixtures), including all four AES-128 ECB blocks
+Section D adds 11 unit tests, including all four AES-128 ECB blocks
 from NIST SP 800-38A F.1.1/F.1.2 in both directions and the complete 64-byte
 example. There is no claimed published AES-based Davies–Meyer hash vector.
 Randomized properties and both MD padding chains are checked against Node’s

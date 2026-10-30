@@ -13,7 +13,7 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
  * failure path the UI offers actually reaches its failure state and says why.
  *
  * Independent oracles, so a wrong page cannot mark its own homework:
- *   - SHA-256 and SHA3-256 come from node's crypto (OpenSSL), not @noble.
+ *   - SHA-256, SHA3-256, MD5 and SHA-1 come from node's crypto (OpenSSL), not @noble.
  *   - Keccak-256 uses fixed PyCryptodome fixtures, including UTF-8 and rate boundaries.
  *   - BLAKE3 has no node binding, so it is checked against the published
  *     reference vectors for "" and "abc" and otherwise held to structural and
@@ -26,7 +26,7 @@ const DEFAULT_MESSAGE = 'The quick brown fox jumps over the lazy dog';
 const BLAKE3_EMPTY = 'af1349b9f5f9a1a6a0404dea36dcc9499bcb25c9adc112b7cc9a93cae41f3262';
 const BLAKE3_ABC = '6437b3ac38465133ffb63b75273a8db548c558465d79db03fd359c6cd5bd9d85';
 
-function nodeHash(algo: 'sha256' | 'sha3-256', message: string | Uint8Array): string {
+function nodeHash(algo: 'sha256' | 'sha3-256' | 'md5' | 'sha1', message: string | Uint8Array): string {
   return createHash(algo).update(Buffer.from(message as never)).digest('hex');
 }
 
@@ -68,10 +68,10 @@ async function setMessage(page: Page, value: string): Promise<void> {
   await page.locator('#message-input').fill(value);
 }
 
-/** The four hex digests currently rendered in the Section A output row. */
+/** The six hex digests currently rendered in the Section A output row. */
 async function renderedDigests(page: Page): Promise<string[]> {
   const cells = page.locator('#hash-results tr').first().locator('td .hex-wrap');
-  await expect(cells).toHaveCount(4);
+  await expect(cells).toHaveCount(6);
   return (await cells.allTextContents()).map((t) => t.trim());
 }
 
@@ -81,7 +81,7 @@ test.beforeEach(async ({ page }) => {
 });
 
 // ---------------------------------------------------------------------------
-// Section A — the four digests are the real digests.
+// Section A — the six digests are the real digests.
 // ---------------------------------------------------------------------------
 
 test.describe('Section A: hash comparison', () => {
@@ -110,14 +110,18 @@ test.describe('Section A: hash comparison', () => {
     await expect(page.locator('.legacy-hashes')).toContainText('MD5 and SHA-1');
   });
 
-  test('prints the real SHA-256 / SHA3-256 / Keccak-256 / BLAKE3 digests of the message', async ({ page }) => {
+  test('prints all six digests with their actual output sizes', async ({ page }) => {
     await page.locator('#hash-btn').click();
-    const [sha256, sha3, keccak, blake3] = await renderedDigests(page);
+    const [sha256, sha3, keccak, blake3, md5, sha1] = await renderedDigests(page);
 
     expect(sha256).toBe(nodeHash('sha256', DEFAULT_MESSAGE));
     expect(sha3).toBe(nodeHash('sha3-256', DEFAULT_MESSAGE));
+    expect(md5).toBe(nodeHash('md5', DEFAULT_MESSAGE));
+    expect(sha1).toBe(nodeHash('sha1', DEFAULT_MESSAGE));
+    expect(md5).toHaveLength(32);
+    expect(sha1).toHaveLength(40);
 
-    // All four are 256-bit, as the "Output size" row claims.
+    // The first four are 256-bit, as the "Output size" row claims.
     for (const hex of [sha256, sha3, keccak, blake3]) {
       expect(hex).toMatch(/^[0-9a-f]{64}$/);
     }
@@ -126,31 +130,37 @@ test.describe('Section A: hash comparison', () => {
       '256 bits',
       '256 bits',
       '256 bits',
+      '128 bits',
+      '160 bits',
     ]);
 
     // Distinct named functions, distinct digests for this input.
-    expect(new Set([sha256, sha3, keccak, blake3]).size).toBe(4);
+    expect(new Set([sha256, sha3, keccak, blake3, md5, sha1]).size).toBe(6);
   });
 
   test('matches published vectors for the empty message and "abc", including BLAKE3', async ({
     page,
   }) => {
     await setMessage(page, '');
-    let [sha256, sha3, keccak, blake3] = await renderedDigests(page);
+    let [sha256, sha3, keccak, blake3, md5, sha1] = await renderedDigests(page);
     expect(sha256).toBe(nodeHash('sha256', ''));
     expect(sha3).toBe(nodeHash('sha3-256', ''));
     expect(keccak).toBe('c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470');
     expect(blake3).toBe(BLAKE3_EMPTY);
+    expect(md5).toBe('d41d8cd98f00b204e9800998ecf8427e');
+    expect(sha1).toBe('da39a3ee5e6b4b0d3255bfef95601890afd80709');
 
     await setMessage(page, 'abc');
-    [sha256, sha3, keccak, blake3] = await renderedDigests(page);
+    [sha256, sha3, keccak, blake3, md5, sha1] = await renderedDigests(page);
     expect(sha256).toBe(nodeHash('sha256', 'abc'));
     expect(sha3).toBe(nodeHash('sha3-256', 'abc'));
     expect(keccak).toBe('4e03657aea45a94fc7d47ba826c8d667c0d1e6e33a64a036ec44f58fa12d6c45');
     expect(blake3).toBe(BLAKE3_ABC);
+    expect(md5).toBe('900150983cd24fb0d6963f7d28e17f72');
+    expect(sha1).toBe('a9993e364706816aba3e25717850c26c9cd0d89d');
   });
 
-  test('is deterministic and fixed-size: same input same output, any size in, 256 bits out', async ({
+  test('is deterministic and fixed-size: same input same output, any size in, the specified digest size out', async ({
     page,
   }) => {
     await page.locator('#hash-btn').click();
@@ -159,22 +169,27 @@ test.describe('Section A: hash comparison', () => {
     expect(await renderedDigests(page)).toEqual(first);
     await expect(page.locator('.consistency')).toHaveText('Same input -> same output.');
 
-    // A one-character message and a 20,000-character one both come out 64 hex.
+    // Input length does not change each algorithm's specified output length.
     for (const message of ['a', 'z'.repeat(20_000)]) {
       await setMessage(page, message);
       const digests = await renderedDigests(page);
-      for (const hex of digests) expect(hex).toMatch(/^[0-9a-f]{64}$/);
+      for (const [i, hex] of digests.entries()) {
+        expect(hex).toMatch(/^[0-9a-f]+$/);
+        expect(hex).toHaveLength([64, 64, 64, 64, 32, 40][i]);
+      }
       expect(digests[0]).toBe(nodeHash('sha256', message));
       expect(digests[1]).toBe(nodeHash('sha3-256', message));
+      expect(digests[4]).toBe(nodeHash('md5', message));
+      expect(digests[5]).toBe(nodeHash('sha1', message));
     }
   });
 
-  test('one edited character changes all four digests', async ({ page }) => {
+  test('one edited character changes all six digests', async ({ page }) => {
     await setMessage(page, 'hash zoo');
     const before = await renderedDigests(page);
     await setMessage(page, 'hash zoO');
     const after = await renderedDigests(page);
-    for (let i = 0; i < 4; i += 1) expect(after[i]).not.toBe(before[i]);
+    for (let i = 0; i < 6; i += 1) expect(after[i]).not.toBe(before[i]);
     expect(after[0]).toBe(nodeHash('sha256', 'hash zoO'));
   });
 
@@ -190,8 +205,8 @@ test.describe('Section A: hash comparison', () => {
     await expect(host).toBeVisible();
 
     const cells = host.locator('.timing-cell');
-    await expect(cells).toHaveCount(4);
-    await expect(host.locator('.timing-algo')).toHaveText(['SHA-256', 'SHA3-256', 'Keccak-256', 'BLAKE3']);
+    await expect(cells).toHaveCount(6);
+    await expect(host.locator('.timing-algo')).toHaveText(['SHA-256', 'SHA3-256', 'Keccak-256', 'BLAKE3', 'MD5 (legacy)', 'SHA-1 (legacy)']);
     for (const text of await host.locator('.timing-num').allTextContents()) {
       const micros = Number(text.replace(' µs', ''));
       expect(Number.isFinite(micros)).toBe(true);
@@ -278,26 +293,27 @@ test.describe('Section B: avalanche effect', () => {
   }) => {
     await page.locator('#analyze-btn').click();
     const cards = page.locator('#avalanche-grids .algo-card');
-    await expect(cards).toHaveCount(4);
+    await expect(cards).toHaveCount(6);
 
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 6; i += 1) {
       const card = cards.nth(i);
       const { algo, diffBits, total, percent } = await readCard(card);
 
-      // The whole: 256 bits, exactly as many cells as bits.
-      expect(total).toBe(256);
-      await expect(card.locator('.bit-cell')).toHaveCount(256);
+      // The whole: each algorithm's actual digest length.
+      const outputBits = [256, 256, 256, 256, 128, 160][i];
+      expect(total).toBe(outputBits);
+      await expect(card.locator('.bit-cell')).toHaveCount(outputBits);
       // The parts: changed + unchanged cells partition the grid...
       await expect(card.locator('.bit-cell.changed')).toHaveCount(diffBits);
-      await expect(card.locator('.bit-cell.same')).toHaveCount(256 - diffBits);
+      await expect(card.locator('.bit-cell.same')).toHaveCount(outputBits - diffBits);
       // ...and the percentage is that count, not a separate opinion.
-      expect(percent).toBeCloseTo((diffBits / 256) * 100, 1);
+      expect(percent).toBeCloseTo((diffBits / outputBits) * 100, 1);
 
-      // Per-byte heatmap: 32 bytes whose per-byte counts sum back to diffBits.
+      // Each output byte contributes exactly one heatmap cell.
       const heat = await card.locator('.heat-cell').evaluateAll((els) =>
         els.map((el) => Number(/heat-(\d+)/.exec(el.className)?.[1] ?? -1)),
       );
-      expect(heat).toHaveLength(32);
+      expect(heat).toHaveLength(outputBits / 8);
       expect(heat.every((n) => n >= 0 && n <= 8)).toBe(true);
       expect(heat.reduce((a, b) => a + b, 0)).toBe(diffBits);
 
@@ -319,7 +335,7 @@ test.describe('Section B: avalanche effect', () => {
       // And the grid's screen-reader label repeats the same numbers.
       await expect(card.locator('.bit-grid')).toHaveAttribute(
         'aria-label',
-        new RegExp(`^${algo.toLowerCase()}: ${diffBits} of 256 output bits changed, ${percent.toFixed(1)} percent`),
+        new RegExp(`^${algo.toLowerCase()}: ${diffBits} of ${outputBits} output bits changed, ${percent.toFixed(1)} percent`),
       );
     }
   });
@@ -336,16 +352,18 @@ test.describe('Section B: avalanche effect', () => {
     const expected = {
       SHA256: hexDiffBits(nodeHash('sha256', original), nodeHash('sha256', flipped)),
       'SHA3-256': hexDiffBits(nodeHash('sha3-256', original), nodeHash('sha3-256', flipped)),
+      MD5: hexDiffBits(nodeHash('md5', original), nodeHash('md5', flipped)),
+      'SHA-1': hexDiffBits(nodeHash('sha1', original), nodeHash('sha1', flipped)),
       'KECCAK-256': 121, // Independently computed with PyCryptodome for bit 11 of this message.
     };
 
     const cards = page.locator('#avalanche-grids .algo-card');
-    for (let i = 0; i < 4; i += 1) {
+    for (let i = 0; i < 6; i += 1) {
       const { algo, diffBits, percent } = await readCard(cards.nth(i));
       if (algo in expected) {
         expect(diffBits, `${algo} diff bits`).toBe(expected[algo as keyof typeof expected]);
       }
-      // The headline "about half" claim, for all four including BLAKE3.
+      // The headline "about half" claim, for all six including the legacy comparisons.
       expect(percent).toBeGreaterThan(25);
       expect(percent).toBeLessThan(75);
     }
@@ -355,9 +373,9 @@ test.describe('Section B: avalanche effect', () => {
     await page.locator('#analyze-btn').click();
     const cards = page.locator('#avalanche-grids .algo-card');
     const shown = [];
-    for (let i = 0; i < 4; i += 1) shown.push((await readCard(cards.nth(i))).percent.toFixed(1));
+    for (let i = 0; i < 6; i += 1) shown.push((await readCard(cards.nth(i))).percent.toFixed(1));
     await expect(page.locator('#aria-live-region')).toHaveText(
-      `Flipped bit 0. Output bits changed: SHA-256 ${shown[0]} percent, SHA3-256 ${shown[1]} percent, Keccak-256 ${shown[2]} percent, BLAKE3 ${shown[3]} percent.`,
+      `Flipped bit 0. Output bits changed: SHA-256 ${shown[0]} percent, SHA3-256 ${shown[1]} percent, Keccak-256 ${shown[2]} percent, BLAKE3 ${shown[3]} percent, MD5 ${shown[4]} percent, SHA-1 ${shown[5]} percent.`,
     );
   });
 
@@ -532,7 +550,7 @@ test.describe('Section B: every-bit sweep', () => {
     await expect(page.locator('#dist-result img, #dist-result .hist')).toHaveCount(0);
     expect(await page.evaluate(() => (window as unknown as Record<string, unknown>).hashZooInjected)).toBeUndefined();
   });
-  for (const algo of ['sha256', 'sha3', 'keccak', 'blake3'] as const) {
+  for (const algo of ['sha256', 'sha3', 'keccak', 'blake3', 'md5', 'sha1'] as const) {
     test(`the ${algo} sweep's buckets sum to the flips it reports`, async ({ page }) => {
       test.setTimeout(90_000);
       const message = 'sweep me across every single bit';
@@ -1146,4 +1164,22 @@ test.afterEach(async({page})=>{
   for(const src of await page.locator('script[src]').evaluateAll(xs=>xs.map(x=>(x as HTMLScriptElement).src))){const file=src.split('/').at(-1)!;
     if(!expected[file])throw new Error('MUTATION_ASSET_MISMATCH: unknown '+file);const response=await page.request.get(src),hash=createHash('sha256').update(await response.body()).digest('hex');if(hash!==expected[file])throw new Error('MUTATION_ASSET_MISMATCH: '+file);
   }
+});
+
+
+test('legacy labels, clipboard and collision guidance stay attached to MD5 and SHA-1', async ({ page, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await setMessage(page, 'abc');
+  for (const [algo, label] of [['md5', 'MD5'], ['sha1', 'SHA-1']] as const) {
+    const cell = page.locator('#hash-results tr').first().locator(`[data-label="${label}"]`);
+    await expect(cell.locator('.legacy-badge')).toHaveText('Legacy · collision-broken');
+    await expect(cell.locator('.hex-wrap')).toHaveText(nodeHash(algo, 'abc'));
+    await cell.getByRole('button', { name: `Copy ${label} hash`, exact: true }).click();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toBe(nodeHash(algo, 'abc'));
+  }
+  await expect(page.locator('.legacy-hashes')).toContainText('broken collision resistance');
+  await expect(page.locator('.legacy-hashes a')).toHaveAttribute('href', 'https://systemslibrarian.github.io/crypto-lab-collision-vault/');
+  await expect(page.locator('.ideal-note')).toContainText('diffusion, not security');
+  await page.locator('#analyze-btn').click();
+  await expect(page.locator('#avalanche-grids .legacy-badge')).toHaveCount(2);
 });

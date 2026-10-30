@@ -1208,3 +1208,16 @@ pre {
 .hash-note h3 { margin: 0 0 .5rem; }
 .hash-note p { margin: .5rem 0; }
 .hash-note a { color: inherit; text-decoration: underline; }
+
+/* Legacy status stays visible in stacked mobile rows as well as table headings. */
+.legacy-badge {
+  display: inline-block;
+  margin: 0.2rem 0 0.4rem;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid var(--border-strong);
+  border-radius: 4px;
+  background: var(--surface-soft);
+  color: var(--text);
+  font-size: 0.75rem;
+  line-height: 1.4;
+}

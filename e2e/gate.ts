@@ -323,10 +323,10 @@ export async function scan(page: Page, label: string): Promise<void> {
 export async function driveAllStates(page: Page, theme: string): Promise<void> {
   await scan(page, `${theme} / first paint`);
 
-  // Section A — four digests of one message, the widest content on the page.
+  // Section A — six digests of one message, the widest content on the page.
   await page.locator('#message-input').fill('the quick brown fox');
   await page.locator('#hash-btn').click();
-  await expect(page.locator('#hash-results .hex-wrap')).toHaveCount(4);
+  await expect(page.locator('#hash-results .hex-wrap')).toHaveCount(6);
   await scan(page, `${theme} / digest comparison`);
 
   await page.locator('aside.hash-note summary').click();
