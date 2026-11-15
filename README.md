@@ -60,10 +60,12 @@ Sources: [Keccak Team specification summary](https://keccak.team/keccak_specs_su
 ## Real-World Usage
 
 - **Bitcoin and cryptocurrency.** Bitcoin uses double-SHA-256 for block headers and transaction IDs, relying on Merkle-Damgård's collision resistance.
-- **NIST standards and TLS.** SHA-256 is mandated in TLS 1.3 certificate signatures, DNSSEC, and many federal compliance frameworks (FIPS 180-4).
+- **NIST standards and TLS.** TLS 1.3 ([RFC 9846 §9.1](https://www.rfc-editor.org/rfc/rfc9846.html#section-9.1), July 2026, which obsoletes RFC 8446) requires every implementation to *support* the SHA-256-based signature schemes `rsa_pkcs1_sha256` (for certificates), `rsa_pss_rsae_sha256` and `ecdsa_secp256r1_sha256` — mandatory to implement, not mandatory to use: §4.3.3 also lists SHA-384 and SHA-512 variants plus Ed25519 and Ed448. SHA-256 is also mandated in DNSSEC and many federal compliance frameworks (FIPS 180-4).
 - **Ethereum 2.0 consensus.** The beacon chain uses SHA-256 for its Merkle tree commitments in the proof-of-stake protocol.
 - **NIST SHA-3 standard (FIPS 202).** SHA3-256 is standardized as a structural alternative to SHA-2, adopted in protocols requiring sponge-based security guarantees.
 - **BLAKE3 file integrity.** The `b3sum` tool and Bao verified streaming use BLAKE3 for fast, parallelizable file checksums and integrity verification.
+
+**Standards reviewed 15 November 2026:** [RFC 9846](https://www.rfc-editor.org/rfc/rfc9846.html) (TLS 1.3, July 2026) obsoletes RFC 8446; its §9.1 makes the SHA-256 signature schemes mandatory to support, not mandatory to use. The bullet above previously said SHA-256 is "mandated in TLS 1.3 certificate signatures".
 
 ## How to Run Locally
 
