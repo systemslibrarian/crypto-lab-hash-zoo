@@ -202,11 +202,11 @@ function buildAppHtml(): string {
 
     <section class="panel" id="hash-intro">
       <h2>Start here - What is a hash?</h2>
-      <p class="intro-lead">A <strong>hash function</strong> takes any input and boils it down to a short, fixed-size fingerprint. Three plain rules define a good one:</p>
+      <p class="intro-lead">A <strong>hash function</strong> takes any input and boils it down to a short, fixed-size fingerprint. These properties matter when you use a cryptographic hash:</p>
       <ul class="intro-rules">
         <li><strong>Deterministic</strong> — the same input always gives the same fingerprint.</li>
-        <li><strong>Fixed-size</strong> — each algorithm has a fixed output size: 256 bits for SHA-256, for example, whether the input is a tweet or a movie.</li>
-        <li><strong>One-way &amp; unpredictable</strong> — you can't run it backwards to the input, and changing anything scrambles the whole output.</li>
+        <li><strong>Fixed-size</strong> — the comparison uses a fixed digest length for each algorithm. SHA-256 returns 256 bits for a tweet or a movie.</li>
+        <li><strong>Preimage resistance</strong> — given a digest, finding an input that produces it should be computationally infeasible. A short list of possible messages can still be checked by hashing each one.</li>
       </ul>
       <div class="intro-live">
         <label for="intro-input">Try it — type anything:</label>
@@ -215,7 +215,7 @@ function buildAppHtml(): string {
           <span class="intro-arrow" aria-hidden="true">SHA-256 →</span>
           <code id="intro-hash"></code>
         </p>
-        <p class="intro-hint">Edit one letter and watch the whole fingerprint change. That total scramble from a tiny edit is the <em>avalanche effect</em>, explored in Section B. This page then compares three different ways of building that fingerprint.</p>
+        <p class="intro-hint">Edit one letter and compare the fingerprints. Section B measures the <em>avalanche effect</em> by changing one input bit and counting how many output bits change. About half is an expectation over many changes. This page then compares three different ways of building that fingerprint.</p>
       </div>
     </section>
 
@@ -278,7 +278,7 @@ function buildAppHtml(): string {
       <div class="cause-effect">
         <div class="cause-panel">
           <h3 class="mini-head">Cause: input bits</h3>
-          <p class="mini-note">One bit is flipped (highlighted). Everything else is untouched.</p>
+          <p class="mini-note"><span id="input-bit-caption"></span></p>
           <div id="input-strip" class="input-strip" role="img" tabindex="0" aria-label="Input bit strip"></div>
         </div>
       </div>
@@ -561,7 +561,7 @@ function renderInputStrip(host: HTMLElement, message: string, bitPosition: numbe
     strip.bits
       .map(
         (b) =>
-          `<span class="ibit ${b.value ? 'ibit-1' : 'ibit-0'}${b.flipped ? ' ibit-flip' : ''}" title="${b.flipped ? 'flipped input bit' : `input bit = ${b.value}`}">${b.value}</span>`,
+          `<span class="ibit ${b.value ? 'ibit-1' : 'ibit-0'}${b.flipped ? ' ibit-flip' : ''}" title="${b.flipped ? `original bit = ${b.value}, flipped bit = ${1 - b.value}` : `input bit = ${b.value}`}">${b.value}</span>`,
       )
       .join('') +
     (endBit < strip.totalBits - 1 ? '<span class="ibit-more">…</span>' : '');
@@ -732,8 +732,9 @@ export function initHashZoo(): void {
       timingHost.innerHTML = makeTimingHtml(results);
     }
     if (options.announceResult) {
+      const byteCount = new TextEncoder().encode(messageInput.value).byteLength;
       announce(
-        `Hashed ${messageInput.value.length} characters. ` +
+        `Hashed ${byteCount} UTF-8 ${byteCount === 1 ? 'byte' : 'bytes'}. ` +
           `SHA-256 ${formatMicros(results.sha256.timeMs)}, ` +
           `SHA3-256 ${formatMicros(results.sha3.timeMs)}, ` +
           `Keccak-256 ${formatMicros(results.keccak.timeMs)}, ` +
@@ -747,6 +748,10 @@ export function initHashZoo(): void {
   const updateSliderContext = (): void => {
     const max = maxBitPosition(messageInput.value);
     const hasMessage = messageInput.value.length > 0;
+    const caption = app.querySelector<HTMLElement>('#input-bit-caption');
+    if (caption) caption.textContent = hasMessage
+      ? 'Original input bits. One bit is flipped (highlighted) for the comparison below.'
+      : 'The input is empty. There is no bit to flip.';
     slider.max = String(max);
     slider.disabled = !hasMessage;
     const clamped = Math.min(Number(slider.value), max);

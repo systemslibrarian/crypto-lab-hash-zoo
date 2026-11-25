@@ -110,6 +110,27 @@ test.describe('Section A: hash comparison', () => {
     await expect(page.locator('.legacy-hashes')).toContainText('MD5 and SHA-1');
   });
 
+  test('hash announcements count UTF-8 bytes and the bit strip identifies the original and changed bit', async ({ page }) => {
+    for (const message of ['x', 'é', 'e\u0301', '🦊', 'A🦊B', '']) {
+      const bytes = Buffer.from(message, 'utf8');
+      await setMessage(page, message);
+      await page.locator('#hash-btn').click();
+      await expect(page.locator('#aria-live-region')).toContainText(
+        `Hashed ${bytes.length} UTF-8 ${bytes.length === 1 ? 'byte' : 'bytes'}.`,
+      );
+      expect((await renderedDigests(page))[0]).toBe(nodeHash('sha256', message));
+      if (!bytes.length) {
+        await expect(page.locator('#input-bit-caption')).toHaveText('The input is empty. There is no bit to flip.');
+        await expect(page.locator('#input-strip .ibit-flip')).toHaveCount(0);
+        continue;
+      }
+      await expect(page.locator('#input-bit-caption')).toContainText('Original input bits');
+      const bit = bytes[0] >> 7;
+      await expect(page.locator('#input-strip .ibit-flip')).toHaveText(String(bit));
+      await expect(page.locator('#input-strip .ibit-flip')).toHaveAttribute('title', `original bit = ${bit}, flipped bit = ${1 - bit}`);
+    }
+  });
+
   test('prints all six digests with their actual output sizes', async ({ page }) => {
     await page.locator('#hash-btn').click();
     const [sha256, sha3, keccak, blake3, md5, sha1] = await renderedDigests(page);

@@ -10,7 +10,7 @@ Every digest, forged tag, and avalanche count in Sections A–C is computed in-b
 
 ## Exhibits
 
-1. **Start here — What is a hash?** A one-input / one-output live example with the three defining rules (deterministic, fixed-size, one-way/unpredictable). Defines a hash before comparing hashes.
+1. **Start here — What is a hash?** A one-input / one-output live example with deterministic hashing, digest length and preimage resistance. Defines a hash before comparing hashes.
 2. **Section A — Hash Comparison.** SHA-256, SHA3-256, Keccak-256, and BLAKE3 side-by-side: 256-bit digests, output size, internal state, and construction, with plain-language annotations. Indicative timing is tucked behind a "show timing" toggle (see the caveat below).
 3. **Section B — Avalanche Effect.** Flip one input bit (shown highlighted in an input-bit strip) and watch ~50% of the 256 output bits flip. A per-byte heatmap encodes how many bits changed in each output byte (uniform diffusion), and a "flip every bit" sweep plots the distribution of output-diff percentages, showing ~50% is a statistical law, not one lucky result.
 4. **Section C — Construction Comparison + length extension.** Merkle-Damgård, sponge, and tree diagrams, plus an interactive length-extension forgery: from a published SHA-256 tag and its length alone (never the secret bytes), append attacker data and produce a valid extended tag — then see it verified against a from-scratch recompute. Contrasts with the sponge's withheld capacity lane.
